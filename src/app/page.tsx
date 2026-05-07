@@ -46,17 +46,17 @@ const supportPillars = [
 export default function Home() {
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-10 px-6 py-8 lg:px-10 lg:py-10">
-      <section className="hero-grid panel section-enter grid gap-8 rounded-[36px] px-8 py-10 lg:grid-cols-[1.35fr_0.95fr] lg:px-10 lg:py-12">
+      <section className="hero-grid panel section-enter grid gap-10 rounded-[38px] px-8 py-10 lg:min-h-[34rem] lg:grid-cols-[1.2fr_0.8fr] lg:px-10 lg:py-12">
         <div className="space-y-8">
           <p className="eyebrow">
             Universal Excel Importer
           </p>
-          <div className="space-y-5">
-            <h1 className="headline max-w-4xl text-4xl font-semibold text-slate-950 sm:text-5xl lg:text-6xl">
+          <div className="space-y-6">
+            <h1 className="headline max-w-4xl text-4xl font-semibold text-slate-950 sm:text-5xl lg:text-[4.35rem] lg:leading-[0.94]">
               多模板自动导入下单系统
             </h1>
             <p className="max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
-              把格式各异的 Excel 模板统一吸收到一条可控工作流里。上传、识别、修正、导出、入库和回查都在同一套操作桌面中完成。
+              让电商、仓配、人工整理出来的 Excel 表直接进入一条标准化流水线。识别、校验、修正、入库和回查不再散落在多张表和多个系统里。
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -74,20 +74,22 @@ export default function Home() {
               查看已导入运单
             </Link>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-4 border-t border-white/50 pt-6 lg:grid-cols-[1.1fr_0.9fr_0.9fr]">
             {supportPillars.map(({ title, detail, icon: Icon }) => (
-              <div key={title} className="data-chip rounded-[24px] p-4 transition hover:-translate-y-0.5">
-                <div className="mb-3 inline-flex rounded-2xl bg-[var(--app-accent-soft)] p-2.5 text-[var(--app-accent)]">
+              <div key={title} className="flex gap-3">
+                <div className="mt-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--app-accent-soft)] text-[var(--app-accent)]">
                   <Icon className="h-4 w-4" />
                 </div>
-                <p className="text-sm font-semibold text-slate-900">{title}</p>
-                <p className="mt-1 text-sm leading-6 text-slate-600">{detail}</p>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{title}</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{detail}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="panel-strong section-enter-delay grid gap-5 rounded-[30px] p-6 text-slate-100">
+        <div className="panel-strong section-enter-delay grid gap-6 rounded-[32px] p-6 text-slate-100 lg:p-7">
           <div className="flex items-center justify-between">
             <p className="text-sm uppercase tracking-[0.22em] text-slate-400">当前开发范围</p>
             <p className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300">
@@ -101,16 +103,20 @@ export default function Home() {
               <span className="text-2xl font-semibold tracking-tight">{metric.value}</span>
             </div>
           ))}
-          <div className="mt-auto rounded-[26px] border border-white/10 bg-white/5 p-5">
+          <div className="mt-auto rounded-[28px] border border-white/10 bg-white/5 p-5">
             <p className="text-xs uppercase tracking-[0.22em] text-slate-400">主流程</p>
-            <div className="mt-3 flex items-center gap-3 text-sm text-slate-200">
-              <span>Excel</span>
-              <span className="text-slate-500">→</span>
-              <span>Preview</span>
-              <span className="text-slate-500">→</span>
-              <span>Validate</span>
-              <span className="text-slate-500">→</span>
-              <span>Submit</span>
+            <div className="mt-4 space-y-3">
+              {[
+                ["01", "Excel Intake"],
+                ["02", "Preview Review"],
+                ["03", "Validation"],
+                ["04", "Database Submit"],
+              ].map(([index, label]) => (
+                <div key={index} className="flex items-center justify-between text-sm">
+                  <span className="text-slate-400">{index}</span>
+                  <span className="font-medium text-slate-100">{label}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

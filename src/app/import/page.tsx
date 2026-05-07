@@ -3,7 +3,7 @@ import { ImportWorkbench } from "@/components/import-workbench";
 export default function ImportPage() {
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-6 py-8 lg:px-10 lg:py-10">
-      <section className="panel section-enter rounded-[34px] px-8 py-8">
+      <section className="chapter-shell panel section-enter rounded-[36px] px-8 py-8 lg:px-10 lg:py-9">
         <p className="eyebrow">Import Flow</p>
         <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
@@ -13,13 +13,13 @@ export default function ImportPage() {
               结构统一折叠成可编辑的标准运单数据。
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[30rem]">
             {[
               ["兼容模板", "5 / 5"],
               ["识别方式", "Alias + Signature"],
               ["数据落点", "Preview Session"],
             ].map(([label, value]) => (
-              <div key={label} className="data-chip rounded-[22px] px-4 py-3">
+              <div key={label} className="data-chip metric-stack rounded-[22px] px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
                 <p className="mt-1 text-lg font-semibold text-slate-900">{value}</p>
               </div>
