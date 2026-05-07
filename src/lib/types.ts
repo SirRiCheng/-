@@ -48,6 +48,16 @@ export type TemplateMatchResult = {
   signature: string;
 };
 
+export type TemplateMappingRecord = {
+  id?: number;
+  templateSignature: string;
+  templateName?: string;
+  headers: string[];
+  mapping: FieldMapping;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type ParsedImportPayload = {
   fileName: string;
   sheetName: string;
@@ -55,9 +65,17 @@ export type ParsedImportPayload = {
   template: TemplateMatchResult;
   rows: ShipmentRow[];
   issues: ValidationIssue[];
+  sourceRows: Array<Record<string, unknown>>;
+  dataStartRowNumber: number;
   totals: {
     parsedRows: number;
     errorRows: number;
+  };
+  performance: {
+    chunkSize: number;
+    totalChunks: number;
+    recommendedPageSize: number;
+    largeDataset: boolean;
   };
 };
 
@@ -83,4 +101,29 @@ export type ImportJobRecord = {
   errorSummary?: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SubmitBatchResult = {
+  saved: boolean;
+  importJobId?: number;
+  totals: {
+    totalRows: number;
+    successRows: number;
+    failedRows: number;
+  };
+  failedRows?: Array<{ rowNumber: number; reason: string }>;
+  progress?: {
+    chunkSize: number;
+    totalChunks: number;
+    processedChunks: number;
+  };
+  reason?: string;
+};
+
+export type ImportProgressState = {
+  phase: "idle" | "uploading" | "mapping" | "ready" | "submitting" | "done";
+  percent: number;
+  message: string;
+  current?: number;
+  total?: number;
 };

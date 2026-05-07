@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
-import { ShipmentRow } from "@/lib/types";
+import { ShipmentRow, SubmitBatchResult } from "@/lib/types";
 import { detectDuplicateExternalCodes, validateShipmentRow } from "@/lib/validators/shipment";
 
 export const runtime = "nodejs";
+
+const INSERT_CHUNK_SIZE = 100;
 
 export async function POST(request: Request) {
   try {
@@ -26,6 +28,11 @@ export async function POST(request: Request) {
         saved: false,
         reason: "数据库未配置，当前仅完成本地开发骨架。",
         totals: { totalRows: rows.length, successRows: 0, failedRows: rows.length },
+        progress: {
+          chunkSize: INSERT_CHUNK_SIZE,
+          totalChunks: Math.max(1, Math.ceil(rows.length / INSERT_CHUNK_SIZE)),
+          processedChunks: 0,
+        },
       });
     }
 
@@ -54,51 +61,59 @@ export async function POST(request: Request) {
       const importJobId = Number((jobResult as { insertId: number }).insertId);
       let successRows = 0;
       const failedRows: Array<{ rowNumber: number; reason: string }> = [];
+      let processedChunks = 0;
+      const totalChunks = Math.max(1, Math.ceil(rows.length / INSERT_CHUNK_SIZE));
 
-      for (const row of rows) {
-        try {
-          await connection.query(
-            `
-              INSERT INTO shipments (
-                external_code,
-                sender_name,
-                sender_phone,
-                sender_address,
-                receiver_name,
-                receiver_phone,
-                receiver_address,
-                weight,
-                package_count,
-                temperature,
-                remark,
-                import_job_id
-              ) VALUES (
-                :externalCode,
-                :senderName,
-                :senderPhone,
-                :senderAddress,
-                :receiverName,
-                :receiverPhone,
-                :receiverAddress,
-                :weight,
-                :packageCount,
-                :temperature,
-                :remark,
-                :importJobId
-              )
-            `,
-            {
-              ...row,
-              importJobId,
-            },
-          );
-          successRows += 1;
-        } catch (error) {
-          failedRows.push({
-            rowNumber: row.rowNumber,
-            reason: error instanceof Error ? error.message : "插入失败",
-          });
+      for (let index = 0; index < rows.length; index += INSERT_CHUNK_SIZE) {
+        const chunk = rows.slice(index, index + INSERT_CHUNK_SIZE);
+
+        for (const row of chunk) {
+          try {
+            await connection.query(
+              `
+                INSERT INTO shipments (
+                  external_code,
+                  sender_name,
+                  sender_phone,
+                  sender_address,
+                  receiver_name,
+                  receiver_phone,
+                  receiver_address,
+                  weight,
+                  package_count,
+                  temperature,
+                  remark,
+                  import_job_id
+                ) VALUES (
+                  :externalCode,
+                  :senderName,
+                  :senderPhone,
+                  :senderAddress,
+                  :receiverName,
+                  :receiverPhone,
+                  :receiverAddress,
+                  :weight,
+                  :packageCount,
+                  :temperature,
+                  :remark,
+                  :importJobId
+                )
+              `,
+              {
+                ...row,
+                importJobId,
+              },
+            );
+            successRows += 1;
+          } catch (error) {
+            failedRows.push({
+              rowNumber: row.rowNumber,
+              reason: error instanceof Error ? error.message : "插入失败",
+            });
+          }
         }
+
+        processedChunks += 1;
       }
 
       await connection.query(
@@ -121,7 +136,7 @@ export async function POST(request: Request) {
 
       await connection.commit();
 
-      return NextResponse.json({
+      const result: SubmitBatchResult = {
         saved: true,
         importJobId,
         totals: {
@@ -130,7 +145,14 @@ export async function POST(request: Request) {
           failedRows: failedRows.length,
         },
         failedRows,
-      });
+        progress: {
+          chunkSize: INSERT_CHUNK_SIZE,
+          totalChunks,
+          processedChunks,
+        },
+      };
+
+      return NextResponse.json(result);
     } catch (error) {
       await connection.rollback();
       throw error;

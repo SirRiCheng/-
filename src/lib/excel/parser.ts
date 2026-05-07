@@ -1,19 +1,14 @@
 import * as XLSX from "xlsx";
 import { fieldAliasMap } from "@/lib/excel/aliases";
+import { PARSE_CHUNK_SIZE, RECOMMENDED_PAGE_SIZE, standardizeRows, LARGE_DATASET_THRESHOLD } from "@/lib/excel/standardize";
 import {
   FieldMapping,
   ParsedImportPayload,
   ShipmentField,
-  ShipmentRow,
   TemplateMatchResult,
 } from "@/lib/types";
 import {
-  detectDuplicateExternalCodes,
-  normalizeTemperature,
   normalizeText,
-  parsePositiveInteger,
-  parsePositiveNumber,
-  validateShipmentRow,
 } from "@/lib/validators/shipment";
 
 function normalizeHeader(header: string) {
@@ -128,28 +123,6 @@ function pickHeaderCandidate(workbook: XLSX.WorkBook) {
   return bestCandidate;
 }
 
-function standardizeRow(row: Record<string, unknown>, rowNumber: number, mapping: FieldMapping): ShipmentRow {
-  const pick = (field: ShipmentField) => {
-    const sourceHeader = mapping[field];
-    return sourceHeader ? row[sourceHeader] : "";
-  };
-
-  return {
-    rowNumber,
-    externalCode: normalizeText(pick("externalCode")) || undefined,
-    senderName: normalizeText(pick("senderName")),
-    senderPhone: normalizeText(pick("senderPhone")),
-    senderAddress: normalizeText(pick("senderAddress")),
-    receiverName: normalizeText(pick("receiverName")),
-    receiverPhone: normalizeText(pick("receiverPhone")),
-    receiverAddress: normalizeText(pick("receiverAddress")),
-    weight: parsePositiveNumber(pick("weight")),
-    packageCount: parsePositiveInteger(pick("packageCount")),
-    temperature: normalizeTemperature(pick("temperature")),
-    remark: normalizeText(pick("remark")) || undefined,
-  };
-}
-
 export function parseWorkbookBuffer(buffer: Buffer, fileName: string): ParsedImportPayload {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const candidate = pickHeaderCandidate(workbook);
@@ -167,23 +140,18 @@ export function parseWorkbookBuffer(buffer: Buffer, fileName: string): ParsedImp
     defval: "",
     raw: false,
   });
-
-  const rows = bodyRows
-    .map((row, index) => standardizeRow(row, candidate.headerRowIndex + index + 2, template.mapping))
-    .filter((row) => Object.values(row).some((value) => normalizeText(value).length > 0));
-  const issues = [...rows.flatMap(validateShipmentRow), ...detectDuplicateExternalCodes(rows)];
-  const errorRows = new Set(issues.map((issue) => issue.rowNumber)).size;
+  const standardized = standardizeRows(bodyRows, template.mapping, candidate.headerRowIndex + 2);
 
   return {
     fileName,
     sheetName: candidate.sheetName,
     headers: rawHeaders,
     template,
-    rows,
-    issues,
-    totals: {
-      parsedRows: rows.length,
-      errorRows,
-    },
+    rows: standardized.rows,
+    issues: standardized.issues,
+    totals: standardized.totals,
+    performance: standardized.performance,
+    sourceRows: bodyRows,
+    dataStartRowNumber: candidate.headerRowIndex + 2,
   };
 }

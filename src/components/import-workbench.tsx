@@ -3,14 +3,85 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { saveImportSession } from "@/lib/import-session";
-import type { ParsedImportPayload } from "@/lib/types";
+import { rebuildParsedPayload } from "@/lib/excel/standardize";
+import { loadManualMapping, saveImportSession, saveManualMapping } from "@/lib/import-session";
+import { shipmentFields, type FieldMapping, type ImportProgressState, type ParsedImportPayload, type TemplateMappingRecord } from "@/lib/types";
 
 export function ImportWorkbench() {
   const router = useRouter();
   const [result, setResult] = useState<ParsedImportPayload | null>(null);
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+  const [manualMapping, setManualMapping] = useState<FieldMapping>({});
+  const [progress, setProgress] = useState<ImportProgressState>({
+    phase: "idle",
+    percent: 0,
+    message: "等待上传",
+  });
+
+  async function tryMatchSavedTemplate(payload: ParsedImportPayload) {
+    try {
+      const response = await fetch(
+        `/api/template-mappings/match?templateSignature=${encodeURIComponent(payload.template.signature)}`,
+        { cache: "no-store" },
+      );
+
+      if (response.ok) {
+        const data = (await response.json()) as { matched?: boolean; record?: TemplateMappingRecord };
+        if (data.matched && data.record?.mapping) {
+          const nextTemplate = {
+            ...payload.template,
+            mapping: data.record.mapping,
+            matchedBy: "saved-template" as const,
+            missingFields: shipmentFields.filter(
+              (field) => field !== "externalCode" && field !== "remark" && !data.record?.mapping[field],
+            ),
+          };
+          return rebuildParsedPayload(payload, nextTemplate);
+        }
+      }
+    } catch {
+      const localRecord = loadManualMapping();
+      if (localRecord?.templateSignature === payload.template.signature) {
+        const nextTemplate = {
+          ...payload.template,
+          mapping: localRecord.mapping,
+          matchedBy: "saved-template" as const,
+          missingFields: shipmentFields.filter(
+            (field) => field !== "externalCode" && field !== "remark" && !localRecord.mapping[field],
+          ),
+        };
+        return rebuildParsedPayload(payload, nextTemplate);
+      }
+    }
+
+    return payload;
+  }
+
+  async function persistManualMapping() {
+    if (!result) return;
+
+    const record: TemplateMappingRecord = {
+      templateSignature: result.template.signature,
+      templateName: result.fileName,
+      headers: result.headers,
+      mapping: manualMapping,
+    };
+
+    saveManualMapping(record);
+
+    try {
+      await fetch("/api/template-mappings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(record),
+      });
+    } catch {
+      // Fall back to local storage only if remote persistence fails.
+    }
+  }
 
   async function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -19,6 +90,14 @@ export function ImportWorkbench() {
     setIsLoading(true);
     setError("");
     setResult(null);
+    setManualMapping({});
+    setProgress({
+      phase: "uploading",
+      percent: 18,
+      message: "上传文件中",
+      current: 1,
+      total: 4,
+    });
 
     try {
       const formData = new FormData();
@@ -34,15 +113,39 @@ export function ImportWorkbench() {
         throw new Error(data.error || "解析失败");
       }
 
-      const payload = data as ParsedImportPayload;
+      setProgress({
+        phase: "mapping",
+        percent: 62,
+        message: "识别模板与校验数据中",
+        current: 3,
+        total: 4,
+      });
+
+      const payload = (await tryMatchSavedTemplate(data as ParsedImportPayload)) as ParsedImportPayload;
       setResult(payload);
+      setManualMapping(payload.template.mapping);
       saveImportSession(payload);
+      setProgress({
+        phase: "ready",
+        percent: 100,
+        message: "导入数据已准备好",
+        current: payload.totals.parsedRows,
+        total: payload.totals.parsedRows,
+      });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "解析失败");
+      setProgress({
+        phase: "idle",
+        percent: 0,
+        message: "导入失败",
+      });
     } finally {
       setIsLoading(false);
     }
   }
+
+  const missingRequiredFields = result?.template.missingFields || [];
+  const canSaveManualMapping = result && Object.keys(manualMapping).length > 0;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
@@ -87,6 +190,24 @@ export function ImportWorkbench() {
             {error}
           </p>
         ) : null}
+
+        <div className="mt-4 rounded-[24px] border border-white/60 bg-white/70 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm font-medium text-slate-800">{progress.message}</p>
+            <p className="text-xs text-slate-500">{progress.percent}%</p>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,#d97706,#f59e0b)] transition-all duration-500"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+          {progress.current && progress.total ? (
+            <p className="mt-2 text-xs text-slate-500">
+              {progress.current} / {progress.total}
+            </p>
+          ) : null}
+        </div>
       </section>
 
       <section className="panel-strong rounded-[32px] p-6 text-slate-100 lg:p-7">
@@ -113,6 +234,9 @@ export function ImportWorkbench() {
               <p>解析行数：{result.totals.parsedRows}</p>
               <p>错误行数：{result.totals.errorRows}</p>
               <p>映射字段数：{Object.keys(result.template.mapping).length}</p>
+              <p>解析分块：{result.performance.totalChunks} 块 / 每块 {result.performance.chunkSize} 行</p>
+              <p>预览建议：每页 {result.performance.recommendedPageSize} 行</p>
+              <p>映射来源：{result.template.matchedBy}</p>
             </div>
             <div className="rounded-[24px] border border-white/10 p-4">
               <p className="mb-2 font-medium text-white">已识别字段</p>
@@ -120,6 +244,61 @@ export function ImportWorkbench() {
                 {JSON.stringify(result.template.mapping, null, 2)}
               </pre>
             </div>
+            {missingRequiredFields.length ? (
+              <div className="rounded-[24px] border border-amber-300/25 bg-amber-400/10 p-4">
+                <p className="mb-3 font-medium text-amber-100">手动映射缺失字段</p>
+                <div className="grid gap-3">
+                  {missingRequiredFields.map((field) => (
+                    <label key={field} className="grid gap-2">
+                      <span className="text-xs uppercase tracking-[0.18em] text-amber-100/80">{field}</span>
+                      <select
+                        value={manualMapping[field] || ""}
+                        onChange={(event) =>
+                          setManualMapping((current) => ({
+                            ...current,
+                            [field]: event.target.value || undefined,
+                          }))
+                        }
+                        className="rounded-2xl border border-white/15 bg-white/10 px-3 py-3 text-sm text-white outline-none"
+                      >
+                        <option value="">请选择 Excel 列</option>
+                        {result.headers
+                          .filter(Boolean)
+                          .map((header) => (
+                            <option key={header} value={header} className="text-slate-900">
+                              {header}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    disabled={!canSaveManualMapping}
+                    onClick={async () => {
+                      const nextTemplate = {
+                        ...result.template,
+                        mapping: manualMapping,
+                        matchedBy: "manual" as const,
+                        missingFields: shipmentFields.filter(
+                          (field) =>
+                            field !== "externalCode" && field !== "remark" && !manualMapping[field],
+                        ),
+                      };
+                      const nextPayload = rebuildParsedPayload(result, nextTemplate);
+                      setResult(nextPayload);
+                      saveImportSession(nextPayload);
+                      await persistManualMapping();
+                    }}
+                    className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    保存映射并应用
+                  </button>
+                </div>
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"

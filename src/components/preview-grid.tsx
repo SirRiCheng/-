@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { clearImportSession, loadImportSession } from "@/lib/import-session";
 import { demoRows } from "@/lib/mock-data";
-import { ParsedImportPayload, ShipmentRow } from "@/lib/types";
+import { ImportProgressState, ParsedImportPayload, ShipmentRow, SubmitBatchResult } from "@/lib/types";
 import { detectDuplicateExternalCodes, normalizeTemperature, validateShipmentRow } from "@/lib/validators/shipment";
 
 const columns: Array<keyof ShipmentRow> = [
@@ -35,32 +36,24 @@ function formatCellValue(row: ShipmentRow, field: keyof ShipmentRow) {
 }
 
 function exportRowsToCsv(rows: ShipmentRow[]) {
-  const header = ["外部编码", "发件人姓名", "发件人电话", "发件人地址", "收件人姓名", "收件人电话", "收件人地址", "重量", "件数", "温层", "备注"];
-  const lines = rows.map((row) => [
-    row.externalCode || "",
-    row.senderName,
-    row.senderPhone,
-    row.senderAddress,
-    row.receiverName,
-    row.receiverPhone,
-    row.receiverAddress,
-    row.weight,
-    row.packageCount,
-    row.temperature ? temperatureLabels[row.temperature] : "",
-    row.remark || "",
-  ]);
-
-  const csv = [header, ...lines]
-    .map((line) => line.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-
-  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "preview-export.csv";
-  link.click();
-  URL.revokeObjectURL(url);
+  const worksheet = XLSX.utils.json_to_sheet(
+    rows.map((row) => ({
+      外部编码: row.externalCode || "",
+      发件人姓名: row.senderName,
+      发件人电话: row.senderPhone,
+      发件人地址: row.senderAddress,
+      收件人姓名: row.receiverName,
+      收件人电话: row.receiverPhone,
+      收件人地址: row.receiverAddress,
+      重量: row.weight,
+      件数: row.packageCount,
+      温层: row.temperature ? temperatureLabels[row.temperature] : "",
+      备注: row.remark || "",
+    })),
+  );
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Preview");
+  XLSX.writeFile(workbook, "preview-export.xlsx");
 }
 
 export function PreviewGrid() {
@@ -70,6 +63,12 @@ export function PreviewGrid() {
   const [submitMessage, setSubmitMessage] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [submitProgress, setSubmitProgress] = useState<ImportProgressState>({
+    phase: "idle",
+    percent: 0,
+    message: "等待提交",
+  });
 
   useEffect(() => {
     const session = loadImportSession();
@@ -86,6 +85,17 @@ export function PreviewGrid() {
     () => [...rows.flatMap(validateShipmentRow), ...detectDuplicateExternalCodes(rows)],
     [rows],
   );
+
+  const pageSize = payload?.performance.recommendedPageSize || 100;
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const visibleRows = useMemo(
+    () => rows.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, rows],
+  );
+
+  useEffect(() => {
+    setPage((current) => Math.min(Math.max(1, current), totalPages));
+  }, [totalPages]);
 
   function updateCell(rowNumber: number, field: keyof ShipmentRow, value: string) {
     setRows((current) =>
@@ -112,6 +122,59 @@ export function PreviewGrid() {
         };
       }),
     );
+
+    setSubmitProgress((current) =>
+      current.phase === "done" || current.phase === "idle"
+        ? current
+        : {
+            ...current,
+            message: "数据已修改，等待重新提交",
+            percent: Math.min(current.percent, 40),
+          },
+    );
+  }
+
+  function onCellKeyDown(
+    event: React.KeyboardEvent<HTMLInputElement>,
+    rowNumber: number,
+    field: keyof ShipmentRow,
+  ) {
+    if (event.key !== "Tab" && event.key !== "Enter") return;
+
+    event.preventDefault();
+    const currentRowIndex = visibleRows.findIndex((row) => row.rowNumber === rowNumber);
+    const currentFieldIndex = columns.findIndex((column) => column === field);
+
+    if (currentRowIndex < 0 || currentFieldIndex < 0) return;
+
+    const isLastField = currentFieldIndex === columns.length - 1;
+    const isLastVisibleRow = currentRowIndex === visibleRows.length - 1;
+    const nextFieldIndex = event.key === "Enter" ? currentFieldIndex : isLastField ? 0 : currentFieldIndex + 1;
+    const nextRowIndex =
+      event.key === "Enter"
+        ? Math.min(visibleRows.length - 1, currentRowIndex + 1)
+        : isLastField
+          ? Math.min(visibleRows.length - 1, currentRowIndex + 1)
+          : currentRowIndex;
+
+    const nextRow = visibleRows[nextRowIndex];
+    const nextField = columns[nextFieldIndex];
+    if (event.key === "Tab" && isLastField && isLastVisibleRow && page < totalPages) {
+      setPage((current) => Math.min(totalPages, current + 1));
+      window.setTimeout(() => {
+        const nextPageInput = document.querySelector<HTMLInputElement>(
+          `[data-row="${rows[page * pageSize]?.rowNumber}"][data-field="${String(columns[0])}"]`,
+        );
+        nextPageInput?.focus();
+        nextPageInput?.select();
+      }, 0);
+      return;
+    }
+    const input = document.querySelector<HTMLInputElement>(
+      `[data-row="${nextRow?.rowNumber}"][data-field="${String(nextField)}"]`,
+    );
+    input?.focus();
+    input?.select();
   }
 
   function appendRow() {
@@ -148,7 +211,28 @@ export function PreviewGrid() {
     }
 
     setIsSubmitting(true);
+    setSubmitProgress({
+      phase: "submitting",
+      percent: 14,
+      message: "正在分批提交运单",
+      current: 0,
+      total: rows.length,
+    });
+    let progressTimer: number | undefined;
     try {
+      const totalChunks = Math.max(1, Math.ceil(rows.length / 100));
+      let optimisticChunk = 0;
+      progressTimer = window.setInterval(() => {
+        optimisticChunk = Math.min(totalChunks, optimisticChunk + 1);
+        setSubmitProgress({
+          phase: "submitting",
+          percent: Math.min(92, 14 + Math.round((optimisticChunk / totalChunks) * 72)),
+          message: "正在分批提交运单",
+          current: Math.min(rows.length, optimisticChunk * 100),
+          total: rows.length,
+        });
+      }, 220);
+
       const response = await fetch("/api/shipments/batch", {
         method: "POST",
         headers: {
@@ -161,22 +245,45 @@ export function PreviewGrid() {
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as SubmitBatchResult | { error?: string };
       if (!response.ok) {
-        throw new Error(data.error || "提交失败");
+        throw new Error(("error" in data ? data.error : undefined) || "提交失败");
+      }
+      if (!("totals" in data)) {
+        throw new Error("提交返回结果不完整");
       }
 
-      if (data.saved) {
+      if ("saved" in data && data.saved) {
         clearImportSession();
       }
 
+      if (progressTimer) {
+        window.clearInterval(progressTimer);
+      }
+
+      setSubmitProgress({
+        phase: "done",
+        percent: 100,
+        message: "提交完成",
+        current: "totals" in data ? data.totals.successRows : rows.length,
+        total: "totals" in data ? data.totals.totalRows : rows.length,
+      });
+
       setSubmitMessage(
-        data.saved
-          ? `提交完成：成功 ${data.totals.successRows} 条，失败 ${data.totals.failedRows} 条`
+        "saved" in data && data.saved
+          ? `提交完成：成功 ${data.totals.successRows} 条，失败 ${data.totals.failedRows} 条，分 ${data.progress?.totalChunks || 1} 批处理`
           : `数据库未配置，已完成提交流程验证：总计 ${data.totals.totalRows} 条`,
       );
     } catch (requestError) {
+      if (progressTimer) {
+        window.clearInterval(progressTimer);
+      }
       setSubmitError(requestError instanceof Error ? requestError.message : "提交失败");
+      setSubmitProgress({
+        phase: "idle",
+        percent: 0,
+        message: "提交失败",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -201,6 +308,11 @@ export function PreviewGrid() {
               {payload
                 ? `当前文件：${payload.fileName} / ${payload.sheetName}。可直接编辑、导出、提交。`
                 : "当前未检测到上传会话，展示的是本地演示数据。"}
+            </p>
+            <p className="mt-2 text-xs leading-6 text-slate-500">
+              {payload?.performance.largeDataset
+                ? `当前为大数据量预览，仅渲染当前页 ${pageSize} 行，降低页面卡顿。`
+                : `当前总行数 ${rows.length}，可直接全流程处理。`}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -243,21 +355,42 @@ export function PreviewGrid() {
           </p>
         ) : null}
 
-        <div className="overflow-x-auto rounded-[26px] border border-white/50 bg-white/55">
+        <div className="mb-5 rounded-[24px] border border-white/60 bg-white/70 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm font-medium text-slate-800">{submitProgress.message}</p>
+            <p className="text-xs text-slate-500">{submitProgress.percent}%</p>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,#111827,#d97706)] transition-all duration-500"
+              style={{ width: `${submitProgress.percent}%` }}
+            />
+          </div>
+          {submitProgress.current !== undefined && submitProgress.total !== undefined ? (
+            <p className="mt-2 text-xs text-slate-500">
+              {submitProgress.current} / {submitProgress.total}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="max-h-[62vh] overflow-auto rounded-[26px] border border-white/50 bg-white/55">
           <table className="min-w-[1320px] divide-y divide-slate-200 text-sm">
-            <thead className="bg-[linear-gradient(135deg,#111827,#1f2937)] text-left text-slate-100">
+            <thead className="text-left text-slate-100">
               <tr>
-                <th className="px-4 py-3 font-medium">行号</th>
+                <th className="sticky top-0 z-10 bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-3 font-medium">行号</th>
                 {columns.map((column) => (
-                  <th key={column} className="px-4 py-3 font-medium">
+                  <th
+                    key={column}
+                    className="sticky top-0 z-10 bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-3 font-medium"
+                  >
                     {column}
                   </th>
                 ))}
-                <th className="px-4 py-3 font-medium">操作</th>
+                <th className="sticky top-0 z-10 bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-3 font-medium">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {rows.map((row) => (
+              {visibleRows.map((row) => (
                 <tr key={row.rowNumber} className="align-top">
                   <td className="px-4 py-3 text-slate-500">{row.rowNumber}</td>
                   {columns.map((column) => {
@@ -268,8 +401,11 @@ export function PreviewGrid() {
                     return (
                       <td key={column} className="px-2 py-2">
                         <input
+                          data-row={row.rowNumber}
+                          data-field={String(column)}
                           value={formatCellValue(row, column)}
                           onChange={(event) => updateCell(row.rowNumber, column, event.target.value)}
+                          onKeyDown={(event) => onCellKeyDown(event, row.rowNumber, column)}
                           className={`w-full rounded-2xl border px-3 py-2 outline-none transition ${
                             hasIssue
                               ? "border-rose-300 bg-rose-50 text-rose-800"
@@ -292,6 +428,29 @@ export function PreviewGrid() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-slate-600">
+            当前显示第 {page} / {totalPages} 页，每页 {pageSize} 行，共 {rows.length} 行
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              上一页
+            </button>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              下一页
+            </button>
+          </div>
         </div>
       </section>
 

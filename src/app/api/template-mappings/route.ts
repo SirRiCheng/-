@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       },
     );
 
-    return NextResponse.json({ saved: true });
+    return NextResponse.json({ saved: true, templateSignature });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "保存模板映射失败。" },

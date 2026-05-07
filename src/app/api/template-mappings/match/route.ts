@@ -35,7 +35,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ matched: false, record: null });
     }
 
-    return NextResponse.json({ matched: true, record });
+    return NextResponse.json({
+      matched: true,
+      record: {
+        id: record.id,
+        templateSignature: record.template_signature,
+        templateName: record.template_name,
+        headers: JSON.parse(String(record.headers_json || "[]")),
+        mapping: JSON.parse(String(record.mapping_json || "{}")),
+        createdAt: record.created_at,
+        updatedAt: record.updated_at,
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "模板匹配查询失败。" },
