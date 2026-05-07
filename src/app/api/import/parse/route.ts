@@ -8,12 +8,18 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file");
 
-    if (!(file instanceof File)) {
+    if (
+      !file ||
+      typeof file !== "object" ||
+      !("arrayBuffer" in file) ||
+      typeof file.arrayBuffer !== "function" ||
+      !("name" in file)
+    ) {
       return NextResponse.json({ error: "缺少上传文件。" }, { status: 400 });
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const payload = parseWorkbookBuffer(Buffer.from(arrayBuffer), file.name);
+    const payload = parseWorkbookBuffer(Buffer.from(arrayBuffer), String(file.name || "upload.xlsx"));
 
     return NextResponse.json(payload);
   } catch (error) {
