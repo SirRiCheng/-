@@ -184,7 +184,7 @@ export function PreviewGrid() {
 
   if (!isLoaded) {
     return (
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-float">
+      <div className="panel rounded-[30px] p-6">
         预览数据加载中...
       </div>
     );
@@ -192,18 +192,19 @@ export function PreviewGrid() {
 
   return (
     <div className="grid gap-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-float">
+      <section className="panel rounded-[32px] p-6 lg:p-7">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-950">预览编辑工作台</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <p className="eyebrow">Review Workspace</p>
+            <h2 className="mt-3 text-2xl font-semibold text-slate-950">预览编辑工作台</h2>
+            <p className="mt-2 text-sm leading-7 text-slate-600">
               {payload
                 ? `当前文件：${payload.fileName} / ${payload.sheetName}。可直接编辑、导出、提交。`
                 : "当前未检测到上传会话，展示的是本地演示数据。"}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <div className="rounded-full bg-slate-950 px-4 py-2 text-sm font-medium text-white">
+            <div className="rounded-full bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-2 text-sm font-medium text-white">
               错误数 {issues.length}
             </div>
             <button
@@ -242,9 +243,9 @@ export function PreviewGrid() {
           </p>
         ) : null}
 
-        <div className="overflow-x-auto rounded-[24px] border border-slate-200">
+        <div className="overflow-x-auto rounded-[26px] border border-white/50 bg-white/55">
           <table className="min-w-[1320px] divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-950 text-left text-slate-100">
+            <thead className="bg-[linear-gradient(135deg,#111827,#1f2937)] text-left text-slate-100">
               <tr>
                 <th className="px-4 py-3 font-medium">行号</th>
                 {columns.map((column) => (
@@ -294,8 +295,13 @@ export function PreviewGrid() {
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-float">
-        <h3 className="text-lg font-semibold text-slate-950">错误汇总</h3>
+      <section className="panel rounded-[32px] p-6">
+        <div className="flex items-center justify-between gap-4">
+          <h3 className="text-lg font-semibold text-slate-950">错误汇总</h3>
+          <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700">
+            一次性展示全部问题
+          </span>
+        </div>
         <div className="mt-4 grid gap-3">
           {issues.length ? (
             issues.map((issue) => (

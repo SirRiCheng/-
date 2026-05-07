@@ -71,11 +71,12 @@ export function OrdersTable() {
 
   return (
     <div className="grid gap-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-float">
+      <section className="panel rounded-[32px] p-6 lg:p-7">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h2 className="text-xl font-semibold text-slate-950">运单查询</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+            <p className="eyebrow">Archive Search</p>
+            <h2 className="mt-3 text-2xl font-semibold text-slate-950">运单查询</h2>
+            <p className="mt-2 text-sm leading-7 text-slate-600">
               支持按外部编码、寄件人、收件人搜索。数据库未配置时自动回退 mock 数据。
             </p>
           </div>
@@ -117,9 +118,9 @@ export function OrdersTable() {
         ) : null}
       </section>
 
-      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-float">
+      <section className="panel overflow-hidden rounded-[32px]">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-950 text-left text-slate-100">
+          <thead className="bg-[linear-gradient(135deg,#111827,#1f2937)] text-left text-slate-100">
             <tr>
               <th className="px-5 py-4 font-medium">外部编码</th>
               <th className="px-5 py-4 font-medium">寄件人</th>
@@ -164,7 +165,7 @@ export function OrdersTable() {
         </table>
       </section>
 
-      <section className="flex items-center justify-between rounded-[28px] border border-slate-200 bg-white px-6 py-4 shadow-float">
+      <section className="panel flex items-center justify-between rounded-[30px] px-6 py-4">
         <p className="text-sm text-slate-600">
           第 {page} / {pageCount} 页，共 {total} 条
         </p>
