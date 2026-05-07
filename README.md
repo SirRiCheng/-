@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Universal Excel Importer
 
-## Getting Started
+多模板 Excel 自动导入下单系统，技术方案对齐 `Vercel + mysql2 + TiDB/MySQL`。
 
-First, run the development server:
+## 当前已完成
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- `Next.js App Router + TypeScript` 本地项目初始化
+- `Vercel + mysql2/promise` 数据库接入骨架
+- `TiDB / MySQL / MYSQL_SOCKET` 连接优先级
+- `template_mappings / import_jobs / shipments` 建表 SQL
+- 首版 Excel 解析接口：`POST /api/import/parse`
+- 模板映射与运单接口骨架
+- 首页、导入页、预览页、历史列表页、详情页
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 本地运行
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. 安装依赖：`npm install`
+2. 复制环境变量：`cp .env.example .env.local`
+3. 本地开发如需真实数据库，填写 `MYSQL_*` 或 `MYSQL_SOCKET`
+4. 启动开发：`npm run dev`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 线上部署
 
-## Learn More
+1. 将项目推到 Git 仓库
+2. 在 `vercel.com` 导入项目
+3. 在 Vercel 项目环境变量中配置：
+   - `TIDB_HOST`
+   - `TIDB_PORT`
+   - `TIDB_USER`
+   - `TIDB_PASSWORD`
+   - `TIDB_DATABASE`
+4. 重新部署
 
-To learn more about Next.js, take a look at the following resources:
+## API
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `POST /api/import/parse`
+- `POST /api/template-mappings`
+- `GET /api/template-mappings/match`
+- `GET /api/shipments`
+- `GET /api/shipments/:id`
+- `POST /api/shipments/batch`
