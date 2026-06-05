@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { templateSignature, templateName = "", headers = [], mapping = {} } = body;
+    const { templateSignature, templateName = "", headers = [], mapping = {}, rule = null } = body;
 
     if (!templateSignature) {
       return NextResponse.json({ error: "templateSignature 必填。" }, { status: 400 });
@@ -24,14 +24,15 @@ export async function POST(request: Request) {
 
     await pool.query(
       `
-        INSERT INTO template_mappings (template_signature, template_name, headers_json, mapping_json)
-        VALUES (:templateSignature, :templateName, :headersJson, :mappingJson)
+        INSERT INTO template_mappings (template_signature, template_name, headers_json, mapping_json, rule_json)
+        VALUES (:templateSignature, :templateName, :headersJson, :mappingJson, :ruleJson)
       `,
       {
         templateSignature,
         templateName,
         headersJson: JSON.stringify(headers),
         mappingJson: JSON.stringify(mapping),
+        ruleJson: rule ? JSON.stringify(rule) : null,
       },
     );
 

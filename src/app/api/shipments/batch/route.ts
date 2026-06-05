@@ -73,28 +73,26 @@ export async function POST(request: Request) {
               `
                 INSERT INTO shipments (
                   external_code,
-                  sender_name,
-                  sender_phone,
-                  sender_address,
+                  store_name,
                   receiver_name,
                   receiver_phone,
                   receiver_address,
-                  weight,
-                  package_count,
-                  temperature,
+                  sku_code,
+                  sku_name,
+                  quantity,
+                  spec,
                   remark,
                   import_job_id
                 ) VALUES (
                   :externalCode,
-                  :senderName,
-                  :senderPhone,
-                  :senderAddress,
+                  :storeName,
                   :receiverName,
                   :receiverPhone,
                   :receiverAddress,
-                  :weight,
-                  :packageCount,
-                  :temperature,
+                  :skuCode,
+                  :skuName,
+                  :quantity,
+                  :spec,
                   :remark,
                   :importJobId
                 )

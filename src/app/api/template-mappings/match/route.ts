@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const pool = getPool();
     const [rows] = await pool.query(
       `
-        SELECT id, template_signature, template_name, headers_json, mapping_json, created_at, updated_at
+        SELECT id, template_signature, template_name, headers_json, mapping_json, rule_json, created_at, updated_at
         FROM template_mappings
         WHERE template_signature = :templateSignature
         ORDER BY id DESC
@@ -43,6 +43,7 @@ export async function GET(request: Request) {
         templateName: record.template_name,
         headers: JSON.parse(String(record.headers_json || "[]")),
         mapping: JSON.parse(String(record.mapping_json || "{}")),
+        rule: record.rule_json ? JSON.parse(String(record.rule_json)) : undefined,
         createdAt: record.created_at,
         updatedAt: record.updated_at,
       },

@@ -3,22 +3,22 @@
 @tailwind utilities;
 
 :root {
-  --app-bg: #efe7d7;
-  --app-surface: rgba(255, 251, 245, 0.86);
-  --app-panel: #fffdf8;
+  --app-bg: #eefafb;
+  --app-surface: rgba(255, 255, 255, 0.88);
+  --app-panel: #ffffff;
   --app-ink: #111827;
   --app-muted: #6b7280;
-  --app-line: rgba(148, 163, 184, 0.22);
-  --app-accent: #d97706;
-  --app-accent-soft: rgba(245, 158, 11, 0.14);
-  --app-deep: #111827;
+  --app-line: rgba(15, 198, 194, 0.22);
+  --app-accent: #0fc6c2;
+  --app-accent-soft: rgba(15, 198, 194, 0.14);
+  --app-deep: #075d5b;
 }
 
 html {
   background:
-    radial-gradient(circle at 14% 10%, rgba(245, 158, 11, 0.16), transparent 24%),
-    radial-gradient(circle at 88% 14%, rgba(15, 23, 42, 0.08), transparent 26%),
-    linear-gradient(180deg, #f6f0e3 0%, #ece2d0 100%);
+    radial-gradient(circle at 16% 12%, rgba(15, 198, 194, 0.16), transparent 24%),
+    radial-gradient(circle at 86% 16%, rgba(7, 93, 91, 0.1), transparent 26%),
+    linear-gradient(180deg, #f5ffff 0%, #eaf8f9 100%);
   min-height: 100%;
 }
 
@@ -38,7 +38,7 @@ body {
 }
 
 ::selection {
-  background: rgba(245, 158, 11, 0.22);
+  background: rgba(15, 198, 194, 0.22);
 }
 
 @layer components {
@@ -101,7 +101,7 @@ body {
     height: 480px;
     border-radius: 999px;
     background:
-      radial-gradient(circle, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0) 68%);
+      radial-gradient(circle, rgba(15, 198, 194, 0.2) 0%, rgba(15, 198, 194, 0) 68%);
     pointer-events: none;
   }
 
@@ -133,7 +133,7 @@ body {
     width: 220px;
     height: 220px;
     border-radius: 999px;
-    background: radial-gradient(circle, rgba(217, 119, 6, 0.14), rgba(217, 119, 6, 0) 72%);
+    background: radial-gradient(circle, rgba(15, 198, 194, 0.14), rgba(15, 198, 194, 0) 72%);
     pointer-events: none;
   }
 

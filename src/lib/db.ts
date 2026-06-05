@@ -8,6 +8,7 @@ const schemaQueries = [
       template_name VARCHAR(255) NOT NULL DEFAULT '',
       headers_json JSON NOT NULL,
       mapping_json JSON NOT NULL,
+      rule_json JSON NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       INDEX idx_template_signature (template_signature(255))
@@ -31,22 +32,23 @@ const schemaQueries = [
     CREATE TABLE IF NOT EXISTS shipments (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       external_code VARCHAR(255) NULL,
-      sender_name VARCHAR(255) NOT NULL,
-      sender_phone VARCHAR(32) NOT NULL,
-      sender_address TEXT NOT NULL,
+      store_name VARCHAR(255) NOT NULL DEFAULT '',
       receiver_name VARCHAR(255) NOT NULL,
       receiver_phone VARCHAR(32) NOT NULL,
       receiver_address TEXT NOT NULL,
-      weight DECIMAL(10, 2) NOT NULL DEFAULT 0,
-      package_count INT NOT NULL DEFAULT 0,
-      temperature VARCHAR(32) NOT NULL,
+      sku_code VARCHAR(255) NOT NULL,
+      sku_name VARCHAR(255) NOT NULL,
+      quantity DECIMAL(12, 2) NOT NULL DEFAULT 0,
+      spec VARCHAR(255) NULL,
       remark TEXT NULL,
       import_job_id BIGINT UNSIGNED NULL,
       source_template_id BIGINT UNSIGNED NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uk_external_code (external_code),
+      INDEX idx_external_code (external_code),
+      INDEX idx_store_name (store_name),
       INDEX idx_receiver_name (receiver_name),
+      INDEX idx_sku_code (sku_code),
       INDEX idx_created_at (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `,
@@ -119,6 +121,7 @@ export async function ensureSchema() {
       for (const query of schemaQueries) {
         await activePool.query(query);
       }
+      await migrateExistingSchema(activePool);
     })().catch((error) => {
       schemaPromise = undefined;
       throw error;
@@ -126,4 +129,62 @@ export async function ensureSchema() {
   }
 
   await schemaPromise;
+}
+
+async function hasColumn(activePool: mysql.Pool, tableName: string, columnName: string) {
+  const [rows] = await activePool.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = :tableName
+        AND COLUMN_NAME = :columnName
+    `,
+    { tableName, columnName },
+  );
+  const [{ total }] = rows as Array<{ total: number }>;
+  return total > 0;
+}
+
+async function hasIndex(activePool: mysql.Pool, tableName: string, indexName: string) {
+  const [rows] = await activePool.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM INFORMATION_SCHEMA.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = :tableName
+        AND INDEX_NAME = :indexName
+    `,
+    { tableName, indexName },
+  );
+  const [{ total }] = rows as Array<{ total: number }>;
+  return total > 0;
+}
+
+async function addColumnIfMissing(activePool: mysql.Pool, tableName: string, columnName: string, definition: string) {
+  if (await hasColumn(activePool, tableName, columnName)) return;
+  await activePool.query(`ALTER TABLE ${tableName} ADD COLUMN ${definition}`);
+}
+
+async function migrateExistingSchema(activePool: mysql.Pool) {
+  await addColumnIfMissing(activePool, "template_mappings", "rule_json", "rule_json JSON NULL");
+  await addColumnIfMissing(activePool, "shipments", "store_name", "store_name VARCHAR(255) NOT NULL DEFAULT ''");
+  await addColumnIfMissing(activePool, "shipments", "sku_code", "sku_code VARCHAR(255) NOT NULL DEFAULT ''");
+  await addColumnIfMissing(activePool, "shipments", "sku_name", "sku_name VARCHAR(255) NOT NULL DEFAULT ''");
+  await addColumnIfMissing(activePool, "shipments", "quantity", "quantity DECIMAL(12, 2) NOT NULL DEFAULT 0");
+  await addColumnIfMissing(activePool, "shipments", "spec", "spec VARCHAR(255) NULL");
+
+  // 兼容旧版 V1 表：旧必填列不再写入，但需要默认值避免 INSERT 失败。
+  for (const columnName of ["sender_name", "sender_phone", "temperature"]) {
+    if (await hasColumn(activePool, "shipments", columnName)) {
+      await activePool.query(`ALTER TABLE shipments ALTER COLUMN ${columnName} SET DEFAULT ''`);
+    }
+  }
+  if (await hasColumn(activePool, "shipments", "sender_address")) {
+    await activePool.query("ALTER TABLE shipments MODIFY COLUMN sender_address TEXT NULL");
+  }
+
+  if (await hasIndex(activePool, "shipments", "uk_external_code")) {
+    await activePool.query("ALTER TABLE shipments DROP INDEX uk_external_code");
+  }
 }

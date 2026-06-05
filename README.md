@@ -1,39 +1,54 @@
-# Universal Excel Importer
+# AI 万能导入 V2
 
-多模板 Excel 自动导入下单系统，技术方案对齐 `Vercel + mysql2 + TiDB/MySQL`。
+面向物流/快递批量下单的多格式导入系统。项目使用 `Next.js App Router + TypeScript`，围绕“AI 生成解析规则 + 用户确认 + 试解析 + 预览编辑 + 数据库存储”完成考试题核心流程。
 
-## 当前已完成
+## 已实现能力
 
-- `Next.js App Router + TypeScript` 本地项目初始化
-- `Vercel + mysql2/promise` 数据库接入骨架
-- `TiDB / MySQL / MYSQL_SOCKET` 连接优先级
-- `template_mappings / import_jobs / shipments` 建表 SQL
-- 首版 Excel 解析接口：`POST /api/import/parse`
-- 模板映射与运单接口骨架
-- 首页、导入页、预览页、历史列表页、详情页
+- 鲸天风格 UI：主色 `#0fc6c2`，蓝绿色清爽工作台、圆角面板、进度反馈和错误汇总。
+- 多格式上传入口：支持 `.xlsx`、`.xls`、`.docx`、`.pdf`；Excel 可执行试解析，Word/PDF 进入规则生成确认流程。
+- 规则引擎：字段映射、跳过头部、尾部信息提取、跨行聚合、矩阵转置、多 Sheet 合并、卡片拆分、纯文本提取、PDF 多单拆分等操作用规则描述。
+- AI 辅助生成规则：`POST /api/rules/ai-generate` 根据文件名、表头和样例行生成推荐规则；未配置模型时使用本地启发式兜底。
+- 题面字段模型：外部编码、收货门店、收件人姓名/电话/地址、SKU 物品编码/名称/数量/规格、备注。
+- 校验规则：A组收货门店或 B组收件人信息二选一；SKU 编码、名称、数量必填；手机号格式；同外部编码 + 同 SKU 重复检测。
+- 类 Excel 预览编辑：分页渲染 1000+ 行、固定表头、横向滚动、单元格编辑、Tab/Enter 跳转、新增/删除行、导出 Excel。
+- 提交与历史列表：批量提交、进度条、数据库写入、历史运单搜索、分页和详情页。
+
+## 环境变量
+
+复制 `.env.example` 为 `.env.local`，本地或 Vercel 配置：
+
+```bash
+TIDB_HOST=
+TIDB_PORT=4000
+TIDB_USER=
+TIDB_PASSWORD=
+TIDB_DATABASE=universal_excel_importer
+
+LLM_API_KEY=
+LLM_API_URL=https://www.vbcode.io/v1
+LLM_MODEL=deepseek-chat
+```
+
+`LLM_API_URL` 可填 OpenAI 兼容的 `/v1` 基础地址，系统会自动请求 `/chat/completions`。
 
 ## 本地运行
 
-1. 安装依赖：`npm install`
-2. 复制环境变量：`cp .env.example .env.local`
-3. 本地开发如需真实数据库，填写 `MYSQL_*` 或 `MYSQL_SOCKET`
-4. 启动开发：`npm run dev`
+```bash
+npm install
+npm run dev
+```
 
-## 线上部署
+## 构建验证
 
-1. 将项目推到 Git 仓库
-2. 在 `vercel.com` 导入项目
-3. 在 Vercel 项目环境变量中配置：
-   - `TIDB_HOST`
-   - `TIDB_PORT`
-   - `TIDB_USER`
-   - `TIDB_PASSWORD`
-   - `TIDB_DATABASE`
-4. 重新部署
+```bash
+npx tsc --noEmit
+npm run build
+```
 
 ## API
 
 - `POST /api/import/parse`
+- `POST /api/rules/ai-generate`
 - `POST /api/template-mappings`
 - `GET /api/template-mappings/match`
 - `GET /api/shipments`

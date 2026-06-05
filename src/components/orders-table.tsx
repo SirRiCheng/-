@@ -77,12 +77,12 @@ export function OrdersTable() {
             <p className="eyebrow">Archive Search</p>
             <h2 className="mt-3 text-2xl font-semibold text-slate-950">运单查询</h2>
             <p className="mt-2 text-sm leading-7 text-slate-600">
-              支持按外部编码、寄件人、收件人搜索。数据库未配置时自动回退 mock 数据。
+              支持按外部编码、门店、收件人、SKU 搜索。数据库未配置时自动回退 mock 数据。
             </p>
           </div>
           <span
             className={`rounded-full px-3 py-1 text-xs font-medium ${
-              isMock ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+              isMock ? "bg-cyan-100 text-cyan-700" : "bg-emerald-100 text-emerald-700"
             }`}
           >
             {isMock ? "Mock 数据" : "数据库数据"}
@@ -100,8 +100,8 @@ export function OrdersTable() {
           <input
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
-            placeholder="输入外部编码 / 寄件人 / 收件人"
-            className="min-w-[280px] flex-1 rounded-full border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-amber-400 focus:bg-white"
+            placeholder="输入外部编码 / 门店 / 收件人 / SKU"
+            className="min-w-[280px] flex-1 rounded-full border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[var(--app-accent)] focus:bg-white"
           />
           <button
             type="submit"
@@ -123,10 +123,10 @@ export function OrdersTable() {
           <thead className="bg-[linear-gradient(135deg,#111827,#1f2937)] text-left text-slate-100">
             <tr>
               <th className="px-5 py-4 font-medium">外部编码</th>
-              <th className="px-5 py-4 font-medium">寄件人</th>
+              <th className="px-5 py-4 font-medium">收货门店</th>
               <th className="px-5 py-4 font-medium">收件人</th>
-              <th className="px-5 py-4 font-medium">温层</th>
-              <th className="px-5 py-4 font-medium">重量</th>
+              <th className="px-5 py-4 font-medium">SKU</th>
+              <th className="px-5 py-4 font-medium">数量</th>
               <th className="px-5 py-4 font-medium">创建时间</th>
               <th className="px-5 py-4 font-medium">操作</th>
             </tr>
@@ -142,13 +142,13 @@ export function OrdersTable() {
               items.map((order) => (
                 <tr key={order.id}>
                   <td className="px-5 py-4 font-medium text-slate-900">{order.externalCode || "-"}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.senderName}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.receiverName}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.temperature}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.weight}</td>
+                  <td className="px-5 py-4 text-slate-600">{order.storeName || "-"}</td>
+                  <td className="px-5 py-4 text-slate-600">{order.receiverName || "-"}</td>
+                  <td className="px-5 py-4 text-slate-600">{order.skuCode} / {order.skuName}</td>
+                  <td className="px-5 py-4 text-slate-600">{order.quantity}</td>
                   <td className="px-5 py-4 text-slate-600">{order.createdAt}</td>
                   <td className="px-5 py-4">
-                    <Link href={`/orders/${order.id}`} className="text-amber-700 transition hover:text-amber-800">
+                    <Link href={`/orders/${order.id}`} className="text-cyan-700 transition hover:text-cyan-800">
                       查看详情
                     </Link>
                   </td>

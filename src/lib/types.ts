@@ -1,33 +1,29 @@
 export const shipmentFields = [
   "externalCode",
-  "senderName",
-  "senderPhone",
-  "senderAddress",
+  "storeName",
   "receiverName",
   "receiverPhone",
   "receiverAddress",
-  "weight",
-  "packageCount",
-  "temperature",
+  "skuCode",
+  "skuName",
+  "quantity",
+  "spec",
   "remark",
 ] as const;
 
 export type ShipmentField = (typeof shipmentFields)[number];
 
-export type TemperatureOption = "ambient" | "chilled" | "frozen";
-
 export type ShipmentRow = {
   rowNumber: number;
   externalCode?: string;
-  senderName: string;
-  senderPhone: string;
-  senderAddress: string;
+  storeName: string;
   receiverName: string;
   receiverPhone: string;
   receiverAddress: string;
-  weight: number | "";
-  packageCount: number | "";
-  temperature: TemperatureOption | "";
+  skuCode: string;
+  skuName: string;
+  quantity: number | "";
+  spec?: string;
   remark?: string;
 };
 
@@ -42,10 +38,11 @@ export type FieldMapping = Partial<Record<ShipmentField, string>>;
 
 export type TemplateMatchResult = {
   mapping: FieldMapping;
-  matchedBy: "alias" | "saved-template" | "manual";
+  matchedBy: "alias" | "saved-template" | "manual" | "ai-generated";
   confidence: number;
   missingFields: ShipmentField[];
   signature: string;
+  rule?: ParseRule;
 };
 
 export type TemplateMappingRecord = {
@@ -54,8 +51,31 @@ export type TemplateMappingRecord = {
   templateName?: string;
   headers: string[];
   mapping: FieldMapping;
+  rule?: ParseRule;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type ParseRule = {
+  id?: string;
+  name: string;
+  description: string;
+  fileTypes: Array<"excel" | "word" | "pdf" | "text">;
+  fieldMapping: FieldMapping;
+  operations: Array<
+    | "skip_headers"
+    | "tail_info_extract"
+    | "cross_row_group"
+    | "matrix_transpose"
+    | "multi_sheet_merge"
+    | "card_split"
+    | "plain_text_extract"
+    | "compound_cell_split"
+    | "pdf_order_split"
+  >;
+  groupBy?: ShipmentField;
+  confidence: number;
+  assumptions: string[];
 };
 
 export type ParsedImportPayload = {

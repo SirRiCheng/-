@@ -1,7 +1,44 @@
 import { NextResponse } from "next/server";
 import { parseWorkbookBuffer } from "@/lib/excel/parser";
+import { buildRuleFromTemplate } from "@/lib/rules/rule-engine";
+import { shipmentFields, TemplateMatchResult } from "@/lib/types";
 
 export const runtime = "nodejs";
+
+function createRuleOnlyPayload(fileName: string) {
+  const template: TemplateMatchResult = {
+    mapping: {},
+    matchedBy: "ai-generated",
+    confidence: 0,
+    missingFields: shipmentFields.filter((field) => field !== "externalCode" && field !== "remark" && field !== "spec"),
+    signature: `rule-only:${fileName}`,
+  };
+  const rule = buildRuleFromTemplate(fileName, [], template);
+
+  return {
+    fileName,
+    sheetName: "文本预处理",
+    headers: [],
+    template: {
+      ...template,
+      rule,
+    },
+    rows: [],
+    issues: [],
+    totals: {
+      parsedRows: 0,
+      errorRows: 0,
+    },
+    performance: {
+      chunkSize: 200,
+      totalChunks: 1,
+      recommendedPageSize: 100,
+      largeDataset: false,
+    },
+    sourceRows: [],
+    dataStartRowNumber: 1,
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -19,7 +56,11 @@ export async function POST(request: Request) {
     }
 
     const arrayBuffer = await file.arrayBuffer();
-    const payload = parseWorkbookBuffer(Buffer.from(arrayBuffer), String(file.name || "upload.xlsx"));
+    const fileName = String(file.name || "upload.xlsx");
+    const isExcel = /\.(xlsx|xls)$/i.test(fileName);
+    const payload = isExcel
+      ? parseWorkbookBuffer(Buffer.from(arrayBuffer), fileName)
+      : createRuleOnlyPayload(fileName);
 
     return NextResponse.json(payload);
   } catch (error) {

@@ -5,33 +5,37 @@ import * as XLSX from "xlsx";
 import { clearImportSession, loadImportSession } from "@/lib/import-session";
 import { demoRows } from "@/lib/mock-data";
 import { ImportProgressState, ParsedImportPayload, ShipmentRow, SubmitBatchResult } from "@/lib/types";
-import { detectDuplicateExternalCodes, normalizeTemperature, validateShipmentRow } from "@/lib/validators/shipment";
+import { detectDuplicateExternalCodes, validateShipmentRow } from "@/lib/validators/shipment";
 
 const columns: Array<keyof ShipmentRow> = [
   "externalCode",
-  "senderName",
-  "senderPhone",
-  "senderAddress",
+  "storeName",
   "receiverName",
   "receiverPhone",
   "receiverAddress",
-  "weight",
-  "packageCount",
-  "temperature",
+  "skuCode",
+  "skuName",
+  "quantity",
+  "spec",
   "remark",
 ];
 
-const temperatureLabels = {
-  ambient: "常温",
-  chilled: "冷藏",
-  frozen: "冷冻",
-} as const;
+const columnLabels: Record<keyof ShipmentRow, string> = {
+  rowNumber: "行号",
+  externalCode: "外部编码",
+  storeName: "收货门店",
+  receiverName: "收件人姓名",
+  receiverPhone: "收件人电话",
+  receiverAddress: "收件人地址",
+  skuCode: "SKU物品编码",
+  skuName: "SKU物品名称",
+  quantity: "SKU发货数量",
+  spec: "SKU规格型号",
+  remark: "备注",
+};
 
 function formatCellValue(row: ShipmentRow, field: keyof ShipmentRow) {
   const value = row[field];
-  if (field === "temperature" && value && typeof value === "string") {
-    return temperatureLabels[value as keyof typeof temperatureLabels] || value;
-  }
   return String(value ?? "");
 }
 
@@ -39,15 +43,14 @@ function exportRowsToCsv(rows: ShipmentRow[]) {
   const worksheet = XLSX.utils.json_to_sheet(
     rows.map((row) => ({
       外部编码: row.externalCode || "",
-      发件人姓名: row.senderName,
-      发件人电话: row.senderPhone,
-      发件人地址: row.senderAddress,
+      收货门店: row.storeName,
       收件人姓名: row.receiverName,
       收件人电话: row.receiverPhone,
       收件人地址: row.receiverAddress,
-      重量: row.weight,
-      件数: row.packageCount,
-      温层: row.temperature ? temperatureLabels[row.temperature] : "",
+      SKU物品编码: row.skuCode,
+      SKU物品名称: row.skuName,
+      SKU发货数量: row.quantity,
+      SKU规格型号: row.spec || "",
       备注: row.remark || "",
     })),
   );
@@ -102,17 +105,10 @@ export function PreviewGrid() {
       current.map((row) => {
         if (row.rowNumber !== rowNumber) return row;
 
-        if (field === "weight" || field === "packageCount") {
+        if (field === "quantity") {
           return {
             ...row,
             [field]: value === "" ? "" : Number(value),
-          };
-        }
-
-        if (field === "temperature") {
-          return {
-            ...row,
-            temperature: normalizeTemperature(value),
           };
         }
 
@@ -183,15 +179,14 @@ export function PreviewGrid() {
       {
         rowNumber: current.length ? Math.max(...current.map((item) => item.rowNumber)) + 1 : 2,
         externalCode: "",
-        senderName: "",
-        senderPhone: "",
-        senderAddress: "",
+        storeName: "",
         receiverName: "",
         receiverPhone: "",
         receiverAddress: "",
-        weight: "",
-        packageCount: "",
-        temperature: "",
+        skuCode: "",
+        skuName: "",
+        quantity: "",
+        spec: "",
         remark: "",
       },
     ]);
@@ -312,7 +307,7 @@ export function PreviewGrid() {
             <p className="mt-2 text-xs leading-6 text-slate-500">
               {payload?.performance.largeDataset
                 ? `当前为大数据量预览，仅渲染当前页 ${pageSize} 行，降低页面卡顿。`
-                : `当前总行数 ${rows.length}，可直接全流程处理。`}
+                : `当前总行数 ${rows.length}，支持门店模式或收件人模式二选一。`}
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -337,7 +332,7 @@ export function PreviewGrid() {
               type="button"
               onClick={submitRows}
               disabled={isSubmitting}
-              className="rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-full bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? "提交中..." : "提交下单"}
             </button>
@@ -362,7 +357,7 @@ export function PreviewGrid() {
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#111827,#d97706)] transition-all duration-500"
+              className="h-full rounded-full bg-[linear-gradient(90deg,#075d5b,#0fc6c2)] transition-all duration-500"
               style={{ width: `${submitProgress.percent}%` }}
             />
           </div>
@@ -377,16 +372,16 @@ export function PreviewGrid() {
           <table className="min-w-[1320px] divide-y divide-slate-200 text-sm">
             <thead className="text-left text-slate-100">
               <tr>
-                <th className="sticky top-0 z-10 bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-3 font-medium">行号</th>
+                <th className="sticky top-0 z-10 bg-[linear-gradient(135deg,#075d5b,#0b8f8c)] px-4 py-3 font-medium">行号</th>
                 {columns.map((column) => (
                   <th
                     key={column}
-                    className="sticky top-0 z-10 bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-3 font-medium"
+                    className="sticky top-0 z-10 bg-[linear-gradient(135deg,#075d5b,#0b8f8c)] px-4 py-3 font-medium"
                   >
-                    {column}
+                    {columnLabels[column]}
                   </th>
                 ))}
-                <th className="sticky top-0 z-10 bg-[linear-gradient(135deg,#111827,#1f2937)] px-4 py-3 font-medium">操作</th>
+                <th className="sticky top-0 z-10 bg-[linear-gradient(135deg,#075d5b,#0b8f8c)] px-4 py-3 font-medium">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -409,7 +404,7 @@ export function PreviewGrid() {
                           className={`w-full rounded-2xl border px-3 py-2 outline-none transition ${
                             hasIssue
                               ? "border-rose-300 bg-rose-50 text-rose-800"
-                              : "border-slate-200 bg-slate-50 text-slate-700 focus:border-amber-400 focus:bg-white"
+                              : "border-slate-200 bg-slate-50 text-slate-700 focus:border-[var(--app-accent)] focus:bg-white"
                           }`}
                         />
                       </td>
@@ -468,7 +463,7 @@ export function PreviewGrid() {
                 key={`${issue.rowNumber}-${issue.field}-${issue.message}`}
                 className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
               >
-                第 {issue.rowNumber} 行，字段 {issue.field}：{issue.message}
+                第 {issue.rowNumber} 行，字段 {columnLabels[issue.field]}：{issue.message}
               </div>
             ))
           ) : (

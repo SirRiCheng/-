@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
   if (!isDatabaseConfigured()) {
     const filtered = demoOrders.filter((order) => {
-      const haystack = `${order.externalCode || ""} ${order.receiverName} ${order.senderName}`;
+      const haystack = `${order.externalCode || ""} ${order.storeName} ${order.receiverName} ${order.skuCode} ${order.skuName}`;
       return haystack.includes(keyword);
     });
 
@@ -35,15 +35,14 @@ export async function GET(request: Request) {
         SELECT
           id,
           external_code AS externalCode,
-          sender_name AS senderName,
-          sender_phone AS senderPhone,
-          sender_address AS senderAddress,
+          store_name AS storeName,
           receiver_name AS receiverName,
           receiver_phone AS receiverPhone,
           receiver_address AS receiverAddress,
-          weight,
-          package_count AS packageCount,
-          temperature,
+          sku_code AS skuCode,
+          sku_name AS skuName,
+          quantity,
+          spec,
           remark,
           import_job_id AS importJobId,
           created_at AS createdAt,
@@ -52,8 +51,10 @@ export async function GET(request: Request) {
         WHERE (
           :keyword = ''
           OR external_code LIKE :likeKeyword
+          OR store_name LIKE :likeKeyword
           OR receiver_name LIKE :likeKeyword
-          OR sender_name LIKE :likeKeyword
+          OR sku_code LIKE :likeKeyword
+          OR sku_name LIKE :likeKeyword
         )
         ORDER BY id DESC
         LIMIT :limit OFFSET :offset
@@ -73,8 +74,10 @@ export async function GET(request: Request) {
         WHERE (
           :keyword = ''
           OR external_code LIKE :likeKeyword
+          OR store_name LIKE :likeKeyword
           OR receiver_name LIKE :likeKeyword
-          OR sender_name LIKE :likeKeyword
+          OR sku_code LIKE :likeKeyword
+          OR sku_name LIKE :likeKeyword
         )
       `,
       { keyword, likeKeyword },

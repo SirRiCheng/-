@@ -1,9 +1,7 @@
 import { FieldMapping, ParsedImportPayload, ShipmentField, ShipmentRow, TemplateMatchResult } from "@/lib/types";
 import {
   detectDuplicateExternalCodes,
-  normalizeTemperature,
   normalizeText,
-  parsePositiveInteger,
   parsePositiveNumber,
   validateShipmentRow,
 } from "@/lib/validators/shipment";
@@ -25,15 +23,14 @@ export function standardizeRow(
   return {
     rowNumber,
     externalCode: normalizeText(pick("externalCode")) || undefined,
-    senderName: normalizeText(pick("senderName")),
-    senderPhone: normalizeText(pick("senderPhone")),
-    senderAddress: normalizeText(pick("senderAddress")),
+    storeName: normalizeText(pick("storeName")),
     receiverName: normalizeText(pick("receiverName")),
     receiverPhone: normalizeText(pick("receiverPhone")),
     receiverAddress: normalizeText(pick("receiverAddress")),
-    weight: parsePositiveNumber(pick("weight")),
-    packageCount: parsePositiveInteger(pick("packageCount")),
-    temperature: normalizeTemperature(pick("temperature")),
+    skuCode: normalizeText(pick("skuCode")),
+    skuName: normalizeText(pick("skuName")),
+    quantity: parsePositiveNumber(pick("quantity")),
+    spec: normalizeText(pick("spec")) || undefined,
     remark: normalizeText(pick("remark")) || undefined,
   };
 }

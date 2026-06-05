@@ -35,15 +35,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           {[
             ["外部编码", order.externalCode || "-"],
-            ["寄件人", order.senderName],
-            ["寄件电话", order.senderPhone],
-            ["寄件地址", order.senderAddress],
-            ["收件人", order.receiverName],
-            ["收件电话", order.receiverPhone],
-            ["收件地址", order.receiverAddress],
-            ["重量", String(order.weight)],
-            ["件数", String(order.packageCount)],
-            ["温层", order.temperature],
+            ["收货门店", order.storeName || "-"],
+            ["收件人", order.receiverName || "-"],
+            ["收件电话", order.receiverPhone || "-"],
+            ["收件地址", order.receiverAddress || "-"],
+            ["SKU物品编码", order.skuCode],
+            ["SKU物品名称", order.skuName],
+            ["SKU发货数量", String(order.quantity)],
+            ["SKU规格型号", order.spec || "-"],
             ["备注", order.remark || "-"],
             ["创建时间", order.createdAt],
           ].map(([label, value]) => (

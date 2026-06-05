@@ -5,7 +5,27 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { rebuildParsedPayload } from "@/lib/excel/standardize";
 import { loadManualMapping, saveImportSession, saveManualMapping } from "@/lib/import-session";
-import { shipmentFields, type FieldMapping, type ImportProgressState, type ParsedImportPayload, type TemplateMappingRecord } from "@/lib/types";
+import {
+  shipmentFields,
+  type FieldMapping,
+  type ImportProgressState,
+  type ParsedImportPayload,
+  type ParseRule,
+  type TemplateMappingRecord,
+} from "@/lib/types";
+
+const fieldLabels: Record<(typeof shipmentFields)[number], string> = {
+  externalCode: "外部编码",
+  storeName: "收货门店",
+  receiverName: "收件人姓名",
+  receiverPhone: "收件人电话",
+  receiverAddress: "收件人地址",
+  skuCode: "SKU物品编码",
+  skuName: "SKU物品名称",
+  quantity: "SKU发货数量",
+  spec: "SKU规格型号",
+  remark: "备注",
+};
 
 export function ImportWorkbench() {
   const router = useRouter();
@@ -13,6 +33,7 @@ export function ImportWorkbench() {
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [manualMapping, setManualMapping] = useState<FieldMapping>({});
+  const [generatedBy, setGeneratedBy] = useState("");
   const [progress, setProgress] = useState<ImportProgressState>({
     phase: "idle",
     percent: 0,
@@ -34,8 +55,9 @@ export function ImportWorkbench() {
             mapping: data.record.mapping,
             matchedBy: "saved-template" as const,
             missingFields: shipmentFields.filter(
-              (field) => field !== "externalCode" && field !== "remark" && !data.record?.mapping[field],
+              (field) => field !== "externalCode" && field !== "remark" && field !== "spec" && !data.record?.mapping[field],
             ),
+            rule: data.record.rule,
           };
           return rebuildParsedPayload(payload, nextTemplate);
         }
@@ -43,14 +65,15 @@ export function ImportWorkbench() {
     } catch {
       const localRecord = loadManualMapping();
       if (localRecord?.templateSignature === payload.template.signature) {
-        const nextTemplate = {
-          ...payload.template,
-          mapping: localRecord.mapping,
-          matchedBy: "saved-template" as const,
-          missingFields: shipmentFields.filter(
-            (field) => field !== "externalCode" && field !== "remark" && !localRecord.mapping[field],
-          ),
-        };
+          const nextTemplate = {
+            ...payload.template,
+            mapping: localRecord.mapping,
+            matchedBy: "saved-template" as const,
+            missingFields: shipmentFields.filter(
+              (field) => field !== "externalCode" && field !== "remark" && field !== "spec" && !localRecord.mapping[field],
+            ),
+            rule: localRecord.rule,
+          };
         return rebuildParsedPayload(payload, nextTemplate);
       }
     }
@@ -66,6 +89,7 @@ export function ImportWorkbench() {
       templateName: result.fileName,
       headers: result.headers,
       mapping: manualMapping,
+      rule: result.template.rule,
     };
 
     saveManualMapping(record);
@@ -91,6 +115,7 @@ export function ImportWorkbench() {
     setError("");
     setResult(null);
     setManualMapping({});
+    setGeneratedBy("");
     setProgress({
       phase: "uploading",
       percent: 18,
@@ -116,19 +141,48 @@ export function ImportWorkbench() {
       setProgress({
         phase: "mapping",
         percent: 62,
-        message: "识别模板与校验数据中",
+        message: "AI 正在生成推荐解析规则",
         current: 3,
         total: 4,
       });
 
-      const payload = (await tryMatchSavedTemplate(data as ParsedImportPayload)) as ParsedImportPayload;
+      let payload = (await tryMatchSavedTemplate(data as ParsedImportPayload)) as ParsedImportPayload;
+      const ruleResponse = await fetch("/api/rules/ai-generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileName: payload.fileName,
+          headers: payload.headers,
+          mapping: payload.template.mapping,
+          sampleRows: payload.sourceRows.slice(0, 5),
+        }),
+      });
+      if (ruleResponse.ok) {
+        const ruleData = (await ruleResponse.json()) as { rule?: ParseRule; generatedBy?: string };
+        if (ruleData.rule) {
+          payload = {
+            ...payload,
+            template: {
+              ...payload.template,
+              rule: ruleData.rule,
+              mapping: ruleData.rule.fieldMapping,
+              matchedBy: "ai-generated",
+              confidence: Math.max(payload.template.confidence, ruleData.rule.confidence),
+            },
+          };
+          payload = rebuildParsedPayload(payload, payload.template);
+          setGeneratedBy(ruleData.generatedBy || "");
+        }
+      }
       setResult(payload);
       setManualMapping(payload.template.mapping);
       saveImportSession(payload);
       setProgress({
         phase: "ready",
         percent: 100,
-        message: "导入数据已准备好",
+        message: "推荐规则已生成，导入数据已准备好",
         current: payload.totals.parsedRows,
         total: payload.totals.parsedRows,
       });
@@ -155,32 +209,32 @@ export function ImportWorkbench() {
             <p className="eyebrow">Stage 01</p>
             <h2 className="mt-3 text-2xl font-semibold text-slate-950">上传与模板识别</h2>
             <p className="mt-2 text-sm leading-7 text-slate-600">
-              当前已接通真实解析 API，上传成功后会把标准化结果写入本地会话，并跳转到预览编辑页继续处理。
+              上传后先由规则引擎和 AI 规则生成器分析文件结构，用户确认规则后再进入预览编辑。
             </p>
           </div>
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-            5 模板已验证
+            9 类结构规则化
           </span>
         </div>
 
-        <label className="group relative flex min-h-[23rem] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[28px] border border-dashed border-slate-300 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(249,244,235,0.86))] p-8 text-center transition hover:border-amber-400">
-          <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_center,rgba(245,158,11,0.14),transparent_72%)] opacity-70" />
+        <label className="group relative flex min-h-[23rem] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[28px] border border-dashed border-slate-300 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(235,252,251,0.9))] p-8 text-center transition hover:border-[var(--app-accent)]">
+          <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_center,rgba(15,198,194,0.16),transparent_72%)] opacity-80" />
           <div className="relative">
             <span className="inline-flex rounded-full border border-white/70 bg-white/70 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-slate-500">
               drag / drop
             </span>
-            <span className="mt-5 block text-2xl font-semibold text-slate-900">拖拽或点击上传 Excel</span>
+            <span className="mt-5 block text-2xl font-semibold text-slate-900">拖拽或点击上传文件</span>
             <span className="mt-3 block max-w-md text-sm leading-7 text-slate-600">
-            支持 `.xlsx` / `.xls`。已覆盖标准模板、电商模板、英文模板、分组模板、多 Sheet 模板。
+              支持 `.xlsx` / `.xls` / `.docx` / `.pdf`。Excel 可执行试解析，Word/PDF 会生成待确认的解析规则入口。
             </span>
           </div>
           <input
             type="file"
-            accept=".xlsx,.xls"
+            accept=".xlsx,.xls,.docx,.pdf"
             className="hidden"
             onChange={onFileChange}
           />
-          <span className="relative mt-7 rounded-full bg-[linear-gradient(135deg,#111827,#1f2937)] px-6 py-3 text-sm font-medium text-white shadow-[0_18px_40px_-22px_rgba(17,24,39,0.88)] transition group-hover:-translate-y-0.5">
+          <span className="relative mt-7 rounded-full bg-[linear-gradient(135deg,#075d5b,#0fc6c2)] px-6 py-3 text-sm font-medium text-white shadow-[0_18px_40px_-22px_rgba(15,198,194,0.88)] transition group-hover:-translate-y-0.5">
             {isLoading ? "解析中..." : "选择文件"}
           </span>
         </label>
@@ -198,7 +252,7 @@ export function ImportWorkbench() {
           </div>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#d97706,#f59e0b)] transition-all duration-500"
+              className="h-full rounded-full bg-[linear-gradient(90deg,#075d5b,#0fc6c2)] transition-all duration-500"
               style={{ width: `${progress.percent}%` }}
             />
           </div>
@@ -212,14 +266,14 @@ export function ImportWorkbench() {
 
       <section className="panel-strong rounded-[32px] p-6 text-slate-100 lg:p-7">
         <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Stage 02</p>
-        <h2 className="mt-3 text-2xl font-semibold">解析输出摘要</h2>
+        <h2 className="mt-3 text-2xl font-semibold">规则与解析摘要</h2>
         {!result ? (
           <div className="mt-6 space-y-4 text-sm text-slate-300">
             <p>上传后会在这里显示：</p>
             <div className="grid gap-3">
-              {["命中的表头映射", "模板签名与缺失字段", "解析行数与错误行数", "前 5 行标准化预览数据"].map((text, index) => (
+              {["AI 推荐解析规则", "字段映射与推测项", "试解析结果和错误行", "确认后保存规则"].map((text, index) => (
                 <div key={text} className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-3">
-                  <span className="mr-3 text-amber-300">0{index + 1}</span>
+                  <span className="mr-3 text-cyan-200">0{index + 1}</span>
                   {text}
                 </div>
               ))}
@@ -237,7 +291,28 @@ export function ImportWorkbench() {
               <p>解析分块：{result.performance.totalChunks} 块 / 每块 {result.performance.chunkSize} 行</p>
               <p>预览建议：每页 {result.performance.recommendedPageSize} 行</p>
               <p>映射来源：{result.template.matchedBy}</p>
+              {generatedBy ? <p>规则生成：{generatedBy}</p> : null}
             </div>
+            {result.template.rule ? (
+              <div className="rounded-[24px] border border-cyan-300/20 bg-cyan-300/10 p-4">
+                <p className="font-medium text-cyan-50">{result.template.rule.name}</p>
+                <p className="mt-2 text-xs leading-6 text-cyan-50/80">{result.template.rule.description}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {result.template.rule.operations.map((operation) => (
+                    <span key={operation} className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-50">
+                      {operation}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-2">
+                  {result.template.rule.assumptions.map((assumption) => (
+                    <p key={assumption} className="text-xs leading-5 text-cyan-50/75">
+                      {assumption}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="rounded-[24px] border border-white/10 p-4">
               <p className="mb-2 font-medium text-white">已识别字段</p>
               <pre className="overflow-x-auto text-xs leading-6 text-slate-300">
@@ -245,12 +320,12 @@ export function ImportWorkbench() {
               </pre>
             </div>
             {missingRequiredFields.length ? (
-              <div className="rounded-[24px] border border-amber-300/25 bg-amber-400/10 p-4">
-                <p className="mb-3 font-medium text-amber-100">手动映射缺失字段</p>
+              <div className="rounded-[24px] border border-cyan-300/25 bg-cyan-400/10 p-4">
+                <p className="mb-3 font-medium text-cyan-100">手动映射缺失字段</p>
                 <div className="grid gap-3">
                   {missingRequiredFields.map((field) => (
                     <label key={field} className="grid gap-2">
-                      <span className="text-xs uppercase tracking-[0.18em] text-amber-100/80">{field}</span>
+                      <span className="text-xs uppercase tracking-[0.18em] text-cyan-100/80">{fieldLabels[field]}</span>
                       <select
                         value={manualMapping[field] || ""}
                         onChange={(event) =>
@@ -284,7 +359,7 @@ export function ImportWorkbench() {
                         matchedBy: "manual" as const,
                         missingFields: shipmentFields.filter(
                           (field) =>
-                            field !== "externalCode" && field !== "remark" && !manualMapping[field],
+                            field !== "externalCode" && field !== "remark" && field !== "spec" && !manualMapping[field],
                         ),
                       };
                       const nextPayload = rebuildParsedPayload(result, nextTemplate);

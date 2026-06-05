@@ -1,21 +1,7 @@
 import { ShipmentField, ShipmentRow, ValidationIssue } from "@/lib/types";
 
-const temperatureMap = new Map([
-  ["常温", "ambient"],
-  ["ambient", "ambient"],
-  ["冷藏", "chilled"],
-  ["chilled", "chilled"],
-  ["冷冻", "frozen"],
-  ["frozen", "frozen"],
-]);
-
 export function normalizeText(value: unknown) {
   return String(value ?? "").trim();
-}
-
-export function normalizeTemperature(input: unknown): ShipmentRow["temperature"] {
-  const value = normalizeText(input).toLowerCase();
-  return (temperatureMap.get(value) as ShipmentRow["temperature"]) || "";
 }
 
 export function parsePositiveNumber(input: unknown) {
@@ -34,16 +20,7 @@ export function parsePositiveInteger(input: unknown) {
 export function validateShipmentRow(row: ShipmentRow): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
-  const requiredTextFields: ShipmentField[] = [
-    "senderName",
-    "senderPhone",
-    "senderAddress",
-    "receiverName",
-    "receiverPhone",
-    "receiverAddress",
-  ];
-
-  requiredTextFields.forEach((field) => {
+  (["skuCode", "skuName"] as const).forEach((field) => {
     if (!normalizeText(row[field])) {
       issues.push({
         rowNumber: row.rowNumber,
@@ -54,42 +31,38 @@ export function validateShipmentRow(row: ShipmentRow): ValidationIssue[] {
     }
   });
 
-  const phonePattern = /^1\d{10}$/;
-  (["senderPhone", "receiverPhone"] as const).forEach((field) => {
-    const value = normalizeText(row[field]);
-    if (value && !phonePattern.test(value)) {
+  const hasStoreGroup = Boolean(normalizeText(row.storeName));
+  const hasReceiverGroup = Boolean(
+    normalizeText(row.receiverName) && normalizeText(row.receiverPhone) && normalizeText(row.receiverAddress),
+  );
+
+  if (!hasStoreGroup && !hasReceiverGroup) {
+    (["storeName", "receiverName", "receiverPhone", "receiverAddress"] as const).forEach((field) => {
       issues.push({
         rowNumber: row.rowNumber,
         field,
-        message: "手机号格式错误",
+        message: "收货门店，或收件人姓名/电话/地址至少填写一组",
         level: "error",
       });
-    }
-  });
+    });
+  }
 
-  if (row.weight === "" || row.weight <= 0) {
+  const phonePattern = /^1\d{10}$/;
+  const receiverPhone = normalizeText(row.receiverPhone);
+  if (receiverPhone && !phonePattern.test(receiverPhone)) {
     issues.push({
       rowNumber: row.rowNumber,
-      field: "weight",
-      message: "重量必须为正数",
+      field: "receiverPhone",
+      message: "手机号格式错误",
       level: "error",
     });
   }
 
-  if (row.packageCount === "" || row.packageCount <= 0 || !Number.isInteger(row.packageCount)) {
+  if (row.quantity === "" || row.quantity <= 0) {
     issues.push({
       rowNumber: row.rowNumber,
-      field: "packageCount",
-      message: "件数必须为正整数",
-      level: "error",
-    });
-  }
-
-  if (!row.temperature) {
-    issues.push({
-      rowNumber: row.rowNumber,
-      field: "temperature",
-      message: "温层必须为常温、冷藏、冷冻之一",
+      field: "quantity",
+      message: "SKU发货数量必须为正数",
       level: "error",
     });
   }
@@ -102,19 +75,23 @@ export function detectDuplicateExternalCodes(rows: ShipmentRow[]) {
 
   rows.forEach((row) => {
     const code = normalizeText(row.externalCode);
+    const skuCode = normalizeText(row.skuCode);
     if (!code) return;
-    map.set(code, [...(map.get(code) || []), row.rowNumber]);
+    // 同一外部编码允许承载多条 SKU 行；只有同一外部编码 + 同一 SKU 重复才视为重复明细。
+    const duplicateKey = `${code}::${skuCode}`;
+    map.set(duplicateKey, [...(map.get(duplicateKey) || []), row.rowNumber]);
   });
 
   const issues: ValidationIssue[] = [];
 
-  map.forEach((rowNumbers, code) => {
+  map.forEach((rowNumbers, duplicateKey) => {
     if (rowNumbers.length < 2) return;
+    const [code, skuCode] = duplicateKey.split("::");
     rowNumbers.forEach((rowNumber) => {
       issues.push({
         rowNumber,
         field: "externalCode",
-        message: `外部编码重复：${code}，重复行 ${rowNumbers.join(" / ")}`,
+        message: `同一外部编码和SKU重复：${code} / ${skuCode || "未填SKU"}，重复行 ${rowNumbers.join(" / ")}`,
         level: "error",
       });
     });

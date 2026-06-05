@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { fieldAliasMap } from "@/lib/excel/aliases";
 import { PARSE_CHUNK_SIZE, RECOMMENDED_PAGE_SIZE, standardizeRows, LARGE_DATASET_THRESHOLD } from "@/lib/excel/standardize";
+import { buildRuleFromTemplate, mergeRuleIntoTemplate } from "@/lib/rules/rule-engine";
 import {
   FieldMapping,
   ParsedImportPayload,
@@ -23,15 +24,13 @@ export function buildTemplateSignature(headers: string[]) {
 }
 
 const preferredFields: ShipmentField[] = [
-  "senderName",
-  "senderPhone",
-  "senderAddress",
+  "storeName",
   "receiverName",
   "receiverPhone",
   "receiverAddress",
-  "weight",
-  "packageCount",
-  "temperature",
+  "skuCode",
+  "skuName",
+  "quantity",
 ];
 
 export function autoMatchHeaders(headers: string[]): TemplateMatchResult {
@@ -51,7 +50,7 @@ export function autoMatchHeaders(headers: string[]): TemplateMatchResult {
   });
 
   const missingFields = (Object.keys(fieldAliasMap) as ShipmentField[]).filter((field) => {
-    if (field === "externalCode" || field === "remark") return false;
+    if (field === "externalCode" || field === "remark" || field === "spec") return false;
     return !mapping[field];
   });
 
@@ -127,14 +126,15 @@ export function parseWorkbookBuffer(buffer: Buffer, fileName: string): ParsedImp
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const candidate = pickHeaderCandidate(workbook);
 
-  if (!candidate || candidate.preferredMatched < 4) {
+  if (!candidate || candidate.preferredMatched < 3) {
     throw new Error("未找到可解析的模板表头，请检查 Excel 是否包含运单数据。");
   }
 
   const sheet = workbook.Sheets[candidate.sheetName];
   const rawHeaders = candidate.headers;
   const headers = rawHeaders.filter(Boolean);
-  const template = candidate.template;
+  const rule = buildRuleFromTemplate(fileName, rawHeaders, candidate.template);
+  const template = mergeRuleIntoTemplate(candidate.template, rule);
   const bodyRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     range: candidate.headerRowIndex,
     defval: "",

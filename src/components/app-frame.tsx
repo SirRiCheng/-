@@ -16,18 +16,18 @@ const navItems = [
 export function AppFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell min-h-screen">
-      <header className="sticky top-0 z-20 border-b border-white/40 bg-[rgba(246,240,227,0.78)] backdrop-blur-xl">
+      <header className="sticky top-0 z-20 border-b border-white/60 bg-[rgba(238,250,251,0.82)] backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-6 py-4 lg:px-10">
           <div className="flex items-center gap-4">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#1f2937,#111827)] text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-white shadow-[0_18px_40px_-24px_rgba(17,24,39,0.9)]">
-              UE
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#075d5b,#0fc6c2)] text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-white shadow-[0_18px_40px_-24px_rgba(15,198,194,0.9)]">
+              AI
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.28em] text-slate-500">
-                Operations Workspace
+                Rule Engine Workspace
               </p>
               <p className="text-lg font-semibold tracking-tight text-slate-950">
-                万能导入下单系统
+                万能导入 V2
               </p>
             </div>
           </div>
@@ -36,7 +36,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
-                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-950 hover:text-white"
+                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-[var(--app-deep)] hover:text-white"
               >
                 <Icon className="h-4 w-4" />
                 {label}

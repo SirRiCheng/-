@@ -3,13 +3,13 @@ import { ArrowRight, Database, FileSpreadsheet, ScanSearch, ShieldCheck, Waypoin
 
 const steps = [
   {
-    title: "上传 Excel",
-    detail: "支持 .xls / .xlsx，先解析原始表头和数据。",
+    title: "上传多格式文件",
+    detail: "支持 Excel / Word / PDF 入口，先抽取表头、样例行和文本结构。",
     icon: FileSpreadsheet,
   },
   {
-    title: "识别模板",
-    detail: "通过字段别名、列顺序无关匹配和模板签名自动映射。",
+    title: "AI 生成解析规则",
+    detail: "大模型生成字段映射和规则操作，用户确认后持久化复用。",
     icon: ScanSearch,
   },
   {
@@ -20,15 +20,15 @@ const steps = [
 ];
 
 const metrics = [
-  { label: "模板兼容目标", value: ">= 5" },
+  { label: "考核结构覆盖", value: "9 类" },
   { label: "单次导入规模", value: "1000+" },
-  { label: "数据库方案", value: "TiDB / MySQL" },
+  { label: "性能目标", value: "10s" },
 ];
 
 const supportPillars = [
   {
-    title: "模板识别",
-    detail: "说明行、分组表头、多 Sheet 和中英文字段都能进入同一套标准模型。",
+    title: "规则引擎",
+    detail: "跳过头部、尾部提取、跨行聚合、矩阵转置和多 Sheet 合并由规则描述。",
     icon: ScanSearch,
   },
   {
@@ -53,16 +53,16 @@ export default function Home() {
           </p>
           <div className="space-y-6">
             <h1 className="headline max-w-4xl text-4xl font-semibold text-slate-950 sm:text-5xl lg:text-[4.35rem] lg:leading-[0.94]">
-              多模板自动导入下单系统
+              AI 万能导入 V2
             </h1>
             <p className="max-w-2xl text-base leading-8 text-slate-600 sm:text-lg">
-              让电商、仓配、人工整理出来的 Excel 表直接进入一条标准化流水线。识别、校验、修正、入库和回查不再散落在多张表和多个系统里。
+              面向物流出库单的多格式导入工作台。文件结构由 AI 生成解析规则，业务数据进入统一的 SKU 下单模型，再完成校验、编辑、提交和回查。
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
             <Link
               href="/import"
-              className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#111827,#1f2937)] px-5 py-3 text-sm font-medium text-white shadow-[0_20px_40px_-24px_rgba(17,24,39,0.78)] transition hover:-translate-y-0.5"
+              className="inline-flex items-center gap-2 rounded-full bg-[linear-gradient(135deg,#075d5b,#0fc6c2)] px-5 py-3 text-sm font-medium text-white shadow-[0_20px_40px_-24px_rgba(15,198,194,0.78)] transition hover:-translate-y-0.5"
             >
               进入导入工作台
               <ArrowRight className="h-4 w-4" />
@@ -107,9 +107,9 @@ export default function Home() {
             <p className="text-xs uppercase tracking-[0.22em] text-slate-400">主流程</p>
             <div className="mt-4 space-y-3">
               {[
-                ["01", "Excel Intake"],
-                ["02", "Preview Review"],
-                ["03", "Validation"],
+                ["01", "File Intake"],
+                ["02", "AI Rule Draft"],
+                ["03", "Preview Review"],
                 ["04", "Database Submit"],
               ].map(([index, label]) => (
                 <div key={index} className="flex items-center justify-between text-sm">

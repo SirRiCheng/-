@@ -9,15 +9,14 @@ export default function ImportPage() {
           <div className="space-y-3">
             <h1 className="headline text-3xl font-semibold text-slate-950 lg:text-5xl">上传、识别与映射</h1>
             <p className="max-w-3xl text-sm leading-7 text-slate-600 lg:text-base">
-              上传区负责吸收不同来源的 Excel 模板，并把说明行、分组表头、多 Sheet
-              结构统一折叠成可编辑的标准运单数据。
+              上传区负责吸收不同来源的 Excel、Word、PDF 文件。系统先生成可确认的解析规则，再把试解析结果折叠成可编辑的标准 SKU 出库单数据。
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[30rem]">
             {[
-              ["兼容模板", "5 / 5"],
-              ["识别方式", "Alias + Signature"],
-              ["数据落点", "Preview Session"],
+              ["考核结构", "9 类"],
+              ["识别方式", "AI Rule + Mapping"],
+              ["数据落点", "Preview / DB"],
             ].map(([label, value]) => (
               <div key={label} className="data-chip metric-stack rounded-[22px] px-4 py-3">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
