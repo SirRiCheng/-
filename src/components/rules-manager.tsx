@@ -98,6 +98,7 @@ function getRuleWarnings(record: TemplateMappingRecord) {
 export function RulesManager() {
   const [records, setRecords] = useState<TemplateMappingRecord[]>([]);
   const [selectedSignature, setSelectedSignature] = useState("");
+  const [editingSignature, setEditingSignature] = useState("");
   const [checkedSignatures, setCheckedSignatures] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -106,6 +107,7 @@ export function RulesManager() {
   const [previewError, setPreviewError] = useState("");
   const [isPreviewing, setIsPreviewing] = useState(false);
   const selectedRecord = records.find((record) => record.templateSignature === selectedSignature) || records[0];
+  const canEditSelected = Boolean(selectedRecord && editingSignature === selectedRecord.templateSignature);
   const ruleWarnings = selectedRecord ? getRuleWarnings(selectedRecord) : [];
 
   useEffect(() => {
@@ -175,6 +177,20 @@ export function RulesManager() {
           }
         : undefined,
     });
+  }
+
+  function selectRecord(templateSignature: string) {
+    setSelectedSignature(templateSignature);
+    setEditingSignature("");
+    setPreview(null);
+    setPreviewError("");
+  }
+
+  function editRecord(templateSignature: string) {
+    setSelectedSignature(templateSignature);
+    setEditingSignature(templateSignature);
+    setPreview(null);
+    setPreviewError("");
   }
 
   async function saveRecord(record: TemplateMappingRecord) {
@@ -291,6 +307,7 @@ export function RulesManager() {
       const nextRecords = records.filter((item) => !deleteSet.has(item.templateSignature));
       persist(nextRecords);
       setSelectedSignature((current) => (current && !deleteSet.has(current) ? current : nextRecords[0]?.templateSignature || ""));
+      setEditingSignature((current) => (current && !deleteSet.has(current) ? current : ""));
       setPreview(null);
       setPreviewError("");
       setMessage(nextTemplateSignatures.length > 1 ? `已删除 ${nextTemplateSignatures.length} 条规则` : "规则已删除");
@@ -324,6 +341,7 @@ export function RulesManager() {
                 const nextRecords = sanitizeRuleRecords([record, ...records]);
                 persist(nextRecords);
                 setSelectedSignature(record.templateSignature);
+                setEditingSignature(record.templateSignature);
                 setPreview(null);
                 setPreviewError("");
                 setMessage("新规则已创建，配置字段后可上传样例文件试解析。");
@@ -372,12 +390,19 @@ export function RulesManager() {
                 {records.map((record) => (
                   <tr
                     key={record.templateSignature}
-                    className={selectedRecord?.templateSignature === record.templateSignature ? "bg-cyan-50" : undefined}
+                    onClick={() => selectRecord(record.templateSignature)}
+                    aria-selected={selectedRecord?.templateSignature === record.templateSignature}
+                    className={`cursor-pointer transition ${
+                      selectedRecord?.templateSignature === record.templateSignature
+                        ? "border-l-4 border-[var(--app-accent)] bg-cyan-50"
+                        : "border-l-4 border-transparent hover:bg-slate-50"
+                    }`}
                   >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
                         checked={checkedSignatures.includes(record.templateSignature)}
+                        onClick={(event) => event.stopPropagation()}
                         onChange={(event) =>
                           setCheckedSignatures((current) =>
                             event.target.checked
@@ -396,7 +421,10 @@ export function RulesManager() {
                     <td className="px-4 py-3">
                       <button
                         type="button"
-                        onClick={() => setSelectedSignature(record.templateSignature)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          editRecord(record.templateSignature);
+                        }}
                         className="font-medium text-blue-600 hover:text-blue-700"
                       >
                         编辑
@@ -433,6 +461,7 @@ export function RulesManager() {
                     };
                     persist([cloned, ...records]);
                     setSelectedSignature(cloned.templateSignature);
+                    setEditingSignature(cloned.templateSignature);
                   }}
                   className="inline-flex items-center gap-2 rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                 >
@@ -478,13 +507,16 @@ export function RulesManager() {
               <span className="text-sm font-medium text-slate-700">规则名称</span>
               <input
                 value={selectedRecord.templateName || ""}
+                readOnly={!canEditSelected}
                 onChange={(event) =>
                   updateSelected({
                     templateName: event.target.value,
                     rule: selectedRecord.rule ? { ...selectedRecord.rule, name: event.target.value } : undefined,
                   })
                 }
-                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)]"
+                className={`rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)] ${
+                  canEditSelected ? "bg-white" : "bg-slate-50 text-slate-500"
+                }`}
               />
             </label>
 
@@ -492,12 +524,15 @@ export function RulesManager() {
               <span className="text-sm font-medium text-slate-700">说明</span>
               <textarea
                 value={selectedRecord.rule?.description || ""}
+                readOnly={!canEditSelected}
                 onChange={(event) =>
                   updateSelected({
                     rule: selectedRecord.rule ? { ...selectedRecord.rule, description: event.target.value } : undefined,
                   })
                 }
-                className="min-h-24 rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)]"
+                className={`min-h-24 rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)] ${
+                  canEditSelected ? "bg-white" : "bg-slate-50 text-slate-500"
+                }`}
               />
             </label>
 
@@ -510,6 +545,7 @@ export function RulesManager() {
                     <button
                       key={operation}
                       type="button"
+                      disabled={!canEditSelected}
                       onClick={() => {
                         const current = selectedRecord.rule?.operations || [];
                         updateSelected({
@@ -525,7 +561,7 @@ export function RulesManager() {
                       }}
                       className={`rounded border px-3 py-1.5 text-xs ${
                         checked ? "border-cyan-300 bg-cyan-50 text-cyan-800" : "border-slate-200 bg-white text-slate-500"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
                       {operation}
                     </button>
@@ -542,9 +578,12 @@ export function RulesManager() {
                     <span className="text-xs text-slate-500">{fieldLabels[field]}</span>
                     <input
                       value={selectedRecord.mapping[field] || ""}
+                      readOnly={!canEditSelected}
                       onChange={(event) => updateMapping(field, event.target.value)}
                       placeholder="源文件列名 / 文本键名"
-                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)]"
+                      className={`rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)] ${
+                        canEditSelected ? "bg-white" : "bg-slate-50 text-slate-500"
+                      }`}
                     />
                   </label>
                 ))}
@@ -641,8 +680,9 @@ export function RulesManager() {
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
+                disabled={!canEditSelected}
                 onClick={() => void saveRecord(selectedRecord)}
-                className="inline-flex w-fit items-center gap-2 rounded bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                className="inline-flex w-fit items-center gap-2 rounded bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Save className="h-4 w-4" />
                 保存规则
