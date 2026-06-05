@@ -29,6 +29,29 @@ function toTemplateMappingRecord(record: Record<string, unknown>): TemplateMappi
   };
 }
 
+function getRecordSortTime(record: TemplateMappingRecord) {
+  return Date.parse(record.updatedAt || record.createdAt || "") || Number(record.id) || 0;
+}
+
+function dedupeTemplateMappingRecords(records: TemplateMappingRecord[]) {
+  const deduped = new Map<string, TemplateMappingRecord>();
+
+  records.forEach((record) => {
+    const templateSignature = record.templateSignature.trim();
+    if (!templateSignature) return;
+
+    const previousRecord = deduped.get(templateSignature);
+    if (!previousRecord || getRecordSortTime(record) >= getRecordSortTime(previousRecord)) {
+      deduped.set(templateSignature, {
+        ...record,
+        templateSignature,
+      });
+    }
+  });
+
+  return [...deduped.values()].sort((left, right) => getRecordSortTime(right) - getRecordSortTime(left));
+}
+
 export async function GET() {
   if (!isDatabaseConfigured()) {
     return NextResponse.json({ items: [], saved: false, reason: "数据库未配置。" });
@@ -46,7 +69,7 @@ export async function GET() {
     );
 
     return NextResponse.json({
-      items: (rows as Array<Record<string, unknown>>).map(toTemplateMappingRecord),
+      items: dedupeTemplateMappingRecords((rows as Array<Record<string, unknown>>).map(toTemplateMappingRecord)),
       saved: true,
     });
   } catch (error) {

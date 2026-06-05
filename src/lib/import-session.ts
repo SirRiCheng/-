@@ -52,6 +52,33 @@ export function loadManualMapping() {
   }
 }
 
+function getRecordSortTime(record: TemplateMappingRecord) {
+  return Date.parse(record.updatedAt || record.createdAt || "") || Number(record.id) || 0;
+}
+
+export function sanitizeRuleRecords(records: TemplateMappingRecord[]) {
+  const deduped = new Map<string, TemplateMappingRecord>();
+
+  records.forEach((record) => {
+    const templateSignature = record.templateSignature?.trim();
+    if (!templateSignature) return;
+
+    const normalizedRecord: TemplateMappingRecord = {
+      ...record,
+      templateSignature,
+      headers: Array.isArray(record.headers) ? record.headers : [],
+      mapping: record.mapping || {},
+    };
+    const previousRecord = deduped.get(templateSignature);
+
+    if (!previousRecord || getRecordSortTime(normalizedRecord) >= getRecordSortTime(previousRecord)) {
+      deduped.set(templateSignature, normalizedRecord);
+    }
+  });
+
+  return [...deduped.values()].sort((left, right) => getRecordSortTime(right) - getRecordSortTime(left));
+}
+
 export function loadRuleRecords() {
   if (typeof window === "undefined") return [];
 
@@ -59,7 +86,10 @@ export function loadRuleRecords() {
   if (!raw) return [];
 
   try {
-    return JSON.parse(raw) as TemplateMappingRecord[];
+    const parsed = JSON.parse(raw) as TemplateMappingRecord[];
+    const records = sanitizeRuleRecords(Array.isArray(parsed) ? parsed : []);
+    window.localStorage.setItem(RULE_RECORDS_KEY, JSON.stringify(records));
+    return records;
   } catch {
     return [];
   }
@@ -67,7 +97,7 @@ export function loadRuleRecords() {
 
 export function saveRuleRecords(records: TemplateMappingRecord[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(RULE_RECORDS_KEY, JSON.stringify(records));
+  window.localStorage.setItem(RULE_RECORDS_KEY, JSON.stringify(sanitizeRuleRecords(records)));
 }
 
 export function upsertRuleRecord(record: TemplateMappingRecord) {
@@ -79,11 +109,11 @@ export function upsertRuleRecord(record: TemplateMappingRecord) {
     updatedAt: now,
   };
   const records = loadRuleRecords();
-  const nextRecords = records.some((item) => item.templateSignature === nextRecord.templateSignature)
+  const nextRecords = sanitizeRuleRecords(records).some((item) => item.templateSignature === nextRecord.templateSignature)
     ? records.map((item) => (item.templateSignature === nextRecord.templateSignature ? nextRecord : item))
     : [nextRecord, ...records];
 
-  saveRuleRecords(nextRecords);
+  saveRuleRecords(sanitizeRuleRecords(nextRecords));
   return nextRecord;
 }
 

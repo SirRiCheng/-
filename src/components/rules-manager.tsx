@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Plus, Save, Trash2 } from "lucide-react";
-import { deleteRuleRecord, loadRuleRecords, saveRuleRecords, upsertRuleRecord } from "@/lib/import-session";
-import { shipmentFields, type FieldMapping, type ParseRule, type TemplateMappingRecord } from "@/lib/types";
+import { AlertTriangle, Copy, FileSpreadsheet, Plus, Save, Trash2 } from "lucide-react";
+import { rebuildParsedPayload } from "@/lib/excel/standardize";
+import { deleteRuleRecord, loadRuleRecords, sanitizeRuleRecords, saveRuleRecords, upsertRuleRecord } from "@/lib/import-session";
+import { shipmentFields, type FieldMapping, type ParsedImportPayload, type ParseRule, type TemplateMappingRecord } from "@/lib/types";
 
 const fieldLabels: Record<(typeof shipmentFields)[number], string> = {
   externalCode: "外部编码",
@@ -55,12 +56,56 @@ function createEmptyRuleRecord(): TemplateMappingRecord {
   };
 }
 
+function getRuleMissingFields(mapping: FieldMapping) {
+  const hasStoreGroup = Boolean(mapping.storeName);
+  const hasReceiverGroup = Boolean(mapping.receiverName && mapping.receiverPhone && mapping.receiverAddress);
+
+  return shipmentFields.filter((field) => {
+    if (field === "externalCode" || field === "remark" || field === "spec") return false;
+    if (field === "storeName") return !hasStoreGroup && !hasReceiverGroup;
+    if (field === "receiverName" || field === "receiverPhone" || field === "receiverAddress") {
+      return !hasStoreGroup && !mapping[field];
+    }
+    return !mapping[field];
+  });
+}
+
+function getRuleWarnings(record: TemplateMappingRecord) {
+  const warnings: string[] = [];
+  const missingFields = getRuleMissingFields(record.mapping);
+  const legacyTerms = ["重量", "件数", "温层"];
+  const mappingText = [
+    ...Object.keys(record.mapping || {}),
+    ...Object.values(record.mapping || {}),
+    ...(record.headers || []),
+  ].join(" ");
+
+  if (missingFields.length) {
+    warnings.push(`V2 必填字段未完整映射：${missingFields.map((field) => fieldLabels[field]).join("、")}。`);
+  }
+
+  if (legacyTerms.some((term) => mappingText.includes(term))) {
+    warnings.push("检测到重量、件数或温层等旧版字段，请改为 SKU 编码、SKU 名称、SKU 数量等 V2 字段。");
+  }
+
+  if (!record.rule?.operations.length) {
+    warnings.push("至少选择一种结构操作，用于覆盖表尾信息、跨行聚合、矩阵转置等考试样例结构。");
+  }
+
+  return warnings;
+}
+
 export function RulesManager() {
   const [records, setRecords] = useState<TemplateMappingRecord[]>([]);
   const [selectedSignature, setSelectedSignature] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<ParsedImportPayload | null>(null);
+  const [previewError, setPreviewError] = useState("");
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const selectedRecord = records.find((record) => record.templateSignature === selectedSignature) || records[0];
+  const ruleWarnings = selectedRecord ? getRuleWarnings(selectedRecord) : [];
 
   useEffect(() => {
     let active = true;
@@ -78,9 +123,12 @@ export function RulesManager() {
         }
         if (!active || !data.items) return;
 
-        setRecords(data.items);
-        saveRuleRecords(data.items);
-        setSelectedSignature(data.items[0]?.templateSignature || "");
+        const nextRecords = sanitizeRuleRecords(data.items);
+        if (nextRecords.length) {
+          setRecords(nextRecords);
+          saveRuleRecords(nextRecords);
+          setSelectedSignature(nextRecords[0]?.templateSignature || "");
+        }
       } catch (requestError) {
         if (active) {
           setError(requestError instanceof Error ? requestError.message : "规则库加载失败，已使用本地缓存");
@@ -96,8 +144,9 @@ export function RulesManager() {
   }, []);
 
   function persist(nextRecords: TemplateMappingRecord[]) {
-    setRecords(nextRecords);
-    saveRuleRecords(nextRecords);
+    const sanitizedRecords = sanitizeRuleRecords(nextRecords);
+    setRecords(sanitizedRecords);
+    saveRuleRecords(sanitizedRecords);
   }
 
   function updateSelected(patch: Partial<TemplateMappingRecord>) {
@@ -135,10 +184,21 @@ export function RulesManager() {
   async function saveRecord(record: TemplateMappingRecord) {
     setMessage("");
     setError("");
-    const savedRecord = upsertRuleRecord(record);
-    persist(records.some((item) => item.templateSignature === savedRecord.templateSignature)
-      ? records.map((item) => (item.templateSignature === savedRecord.templateSignature ? savedRecord : item))
-      : [savedRecord, ...records]);
+    const savedRecord = upsertRuleRecord({
+      ...record,
+      rule: record.rule
+        ? {
+            ...record.rule,
+            fieldMapping: record.mapping,
+          }
+        : undefined,
+    });
+    persist(
+      records.some((item) => item.templateSignature === savedRecord.templateSignature)
+        ? records.map((item) => (item.templateSignature === savedRecord.templateSignature ? savedRecord : item))
+        : [savedRecord, ...records],
+    );
+    setSelectedSignature(savedRecord.templateSignature);
 
     try {
       const response = await fetch("/api/template-mappings", {
@@ -155,6 +215,53 @@ export function RulesManager() {
       setMessage(data.saved ? "规则已保存到服务器端规则库" : data.reason || "规则已保存到本地缓存");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "保存规则失败，已保留本地缓存");
+    }
+  }
+
+  async function previewSelectedRule() {
+    if (!selectedRecord || !previewFile) {
+      setPreviewError("请先选择规则和样例文件。");
+      return;
+    }
+
+    setPreview(null);
+    setPreviewError("");
+    setIsPreviewing(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", previewFile);
+
+      const response = await fetch("/api/import/parse", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "试解析失败");
+      }
+
+      const payload = data as ParsedImportPayload;
+      const nextTemplate = {
+        ...payload.template,
+        mapping: selectedRecord.mapping,
+        rule: selectedRecord.rule
+          ? {
+              ...selectedRecord.rule,
+              fieldMapping: selectedRecord.mapping,
+            }
+          : selectedRecord.rule,
+        matchedBy: "manual" as const,
+        confidence: selectedRecord.rule?.confidence || payload.template.confidence,
+        missingFields: getRuleMissingFields(selectedRecord.mapping),
+      };
+
+      setPreview(rebuildParsedPayload(payload, nextTemplate));
+      setMessage("试解析完成，请检查预览行和错误提示后再保存规则。");
+    } catch (requestError) {
+      setPreviewError(requestError instanceof Error ? requestError.message : "试解析失败");
+    } finally {
+      setIsPreviewing(false);
     }
   }
 
@@ -187,10 +294,14 @@ export function RulesManager() {
           <button
             type="button"
             onClick={() => {
-              const record = upsertRuleRecord(createEmptyRuleRecord());
-              const nextRecords = [record, ...records];
-              setRecords(nextRecords);
+              const record = createEmptyRuleRecord();
+              const nextRecords = sanitizeRuleRecords([record, ...records]);
+              persist(nextRecords);
               setSelectedSignature(record.templateSignature);
+              setPreview(null);
+              setPreviewError("");
+              setMessage("新规则已创建，配置字段后可上传样例文件试解析。");
+              setError("");
             }}
             className="inline-flex items-center gap-2 rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
           >
@@ -286,6 +397,30 @@ export function RulesManager() {
               </div>
             </div>
 
+            <div
+              className={`rounded border px-4 py-3 text-sm ${
+                ruleWarnings.length
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
+              }`}
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />
+                <div>
+                  <p className="font-medium">{ruleWarnings.length ? "规则需要补充" : "规则字段已满足 V2 要求"}</p>
+                  {ruleWarnings.length ? (
+                    <ul className="mt-2 grid gap-1">
+                      {ruleWarnings.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1">已覆盖 SKU 编码、SKU 名称、数量，以及门店或完整收件人信息。</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <label className="grid gap-2">
               <span className="text-sm font-medium text-slate-700">规则名称</span>
               <input
@@ -363,14 +498,103 @@ export function RulesManager() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void saveRecord(selectedRecord)}
-              className="inline-flex w-fit items-center gap-2 rounded bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              <Save className="h-4 w-4" />
-              保存规则
-            </button>
+            <div className="rounded border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">试解析预览</p>
+                  <p className="mt-1 text-xs text-slate-500">上传样例文件，用当前规则解析前 5 行并检查错误行数。</p>
+                </div>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                  <FileSpreadsheet className="h-4 w-4" />
+                  选择样例文件
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.doc,.docx,.pdf,.txt"
+                    className="hidden"
+                    onChange={(event) => {
+                      setPreviewFile(event.target.files?.[0] || null);
+                      setPreview(null);
+                      setPreviewError("");
+                    }}
+                  />
+                </label>
+              </div>
+
+              {previewFile ? <p className="mt-3 text-xs text-slate-500">当前样例：{previewFile.name}</p> : null}
+              {previewError ? (
+                <p className="mt-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {previewError}
+                </p>
+              ) : null}
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={!previewFile || isPreviewing}
+                  onClick={() => void previewSelectedRule()}
+                  className="inline-flex items-center gap-2 rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  {isPreviewing ? "解析中" : "试解析当前文件"}
+                </button>
+                {preview ? (
+                  <span className="text-sm text-slate-600">
+                    已解析 {preview.totals.parsedRows} 行，错误行 {preview.totals.errorRows} 行
+                  </span>
+                ) : null}
+              </div>
+
+              {preview ? (
+                <div className="mt-4 overflow-x-auto rounded border border-slate-200 bg-white">
+                  <table className="min-w-full divide-y divide-slate-200 text-xs">
+                    <thead className="bg-slate-100 text-left text-slate-700">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">行号</th>
+                        <th className="px-3 py-2 font-semibold">门店/收件人</th>
+                        <th className="px-3 py-2 font-semibold">SKU 编码</th>
+                        <th className="px-3 py-2 font-semibold">SKU 名称</th>
+                        <th className="px-3 py-2 font-semibold">数量</th>
+                        <th className="px-3 py-2 font-semibold">备注</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {preview.rows.slice(0, 5).map((row) => (
+                        <tr key={`${row.rowNumber}-${row.skuCode}-${row.skuName}`}>
+                          <td className="px-3 py-2 text-slate-500">{row.rowNumber}</td>
+                          <td className="px-3 py-2 text-slate-800">
+                            {row.storeName || [row.receiverName, row.receiverPhone, row.receiverAddress].filter(Boolean).join(" / ") || "-"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-800">{row.skuCode || "-"}</td>
+                          <td className="px-3 py-2 text-slate-800">{row.skuName || "-"}</td>
+                          <td className="px-3 py-2 text-slate-800">{row.quantity || "-"}</td>
+                          <td className="px-3 py-2 text-slate-500">{row.remark || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {preview.issues.length ? (
+                    <div className="border-t border-slate-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      {preview.issues.slice(0, 3).map((issue) => (
+                        <p key={`${issue.rowNumber}-${issue.field}-${issue.message}`}>
+                          第 {issue.rowNumber} 行 {fieldLabels[issue.field]}：{issue.message}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void saveRecord(selectedRecord)}
+                className="inline-flex w-fit items-center gap-2 rounded bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                <Save className="h-4 w-4" />
+                保存规则
+              </button>
+            </div>
           </div>
         ) : (
           <div className="rounded border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500">
