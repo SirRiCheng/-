@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import * as XLSX from "xlsx";
-import { clearImportSession, loadImportSession } from "@/lib/import-session";
-import { demoRows } from "@/lib/mock-data";
 import { ImportProgressState, ParsedImportPayload, ShipmentRow, SubmitBatchResult } from "@/lib/types";
 import { detectDuplicateExternalCodes, validateShipmentRow } from "@/lib/validators/shipment";
 
@@ -60,8 +59,10 @@ function exportRowsToCsv(rows: ShipmentRow[]) {
 }
 
 export function PreviewGrid() {
+  const searchParams = useSearchParams();
   const [payload, setPayload] = useState<ParsedImportPayload | null>(null);
   const [rows, setRows] = useState<ShipmentRow[]>([]);
+  const [sessionId, setSessionId] = useState<number | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [submitMessage, setSubmitMessage] = useState("");
   const [submitError, setSubmitError] = useState("");
@@ -74,15 +75,46 @@ export function PreviewGrid() {
   });
 
   useEffect(() => {
-    const session = loadImportSession();
-    if (session) {
-      setPayload(session);
-      setRows(session.rows);
-    } else {
-      setRows(demoRows);
+    let active = true;
+
+    async function fetchImportSession() {
+      setIsLoaded(false);
+      setSubmitError("");
+
+      try {
+        const requestedSessionId = searchParams.get("sessionId");
+        const response = await fetch(
+          `/api/import-sessions${requestedSessionId ? `?id=${encodeURIComponent(requestedSessionId)}` : ""}`,
+          { cache: "no-store" },
+        );
+        const data = (await response.json()) as { id?: number; payload?: ParsedImportPayload | null; error?: string };
+
+        if (!response.ok || !data.payload || !data.id) {
+          throw new Error(data.error || "解析会话查询失败");
+        }
+
+        if (!active) return;
+        setSessionId(data.id);
+        setPayload(data.payload);
+        setRows(data.payload.rows);
+      } catch (requestError) {
+        if (!active) return;
+        setPayload(null);
+        setRows([]);
+        setSubmitError(requestError instanceof Error ? requestError.message : "解析会话查询失败");
+      } finally {
+        if (active) {
+          setIsLoaded(true);
+        }
+      }
     }
-    setIsLoaded(true);
-  }, []);
+
+    void fetchImportSession();
+
+    return () => {
+      active = false;
+    };
+  }, [searchParams]);
 
   const issues = useMemo(
     () => [...rows.flatMap(validateShipmentRow), ...detectDuplicateExternalCodes(rows)],
@@ -100,24 +132,69 @@ export function PreviewGrid() {
     setPage((current) => Math.min(Math.max(1, current), totalPages));
   }, [totalPages]);
 
-  function updateCell(rowNumber: number, field: keyof ShipmentRow, value: string) {
-    setRows((current) =>
-      current.map((row) => {
-        if (row.rowNumber !== rowNumber) return row;
+  async function persistRows(nextRows: ShipmentRow[]) {
+    if (!payload || !sessionId) return;
 
-        if (field === "quantity") {
-          return {
-            ...row,
-            [field]: value === "" ? "" : Number(value),
-          };
-        }
+    const nextIssues = [...nextRows.flatMap(validateShipmentRow), ...detectDuplicateExternalCodes(nextRows)];
+    const nextPayload: ParsedImportPayload = {
+      ...payload,
+      rows: nextRows,
+      issues: nextIssues,
+      totals: {
+        parsedRows: nextRows.length,
+        errorRows: new Set(nextIssues.map((issue) => issue.rowNumber)).size,
+      },
+    };
+    const response = await fetch("/api/import-sessions", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id: sessionId, payload: nextPayload }),
+    });
+    const data = (await response.json()) as { saved?: boolean; error?: string };
+
+    if (!response.ok) {
+      throw new Error(data.error || "预览数据保存入库失败");
+    }
+
+    setPayload(nextPayload);
+  }
+
+  function updateCell(rowNumber: number, field: keyof ShipmentRow, value: string) {
+    if (field === "quantity") {
+      setRows((current) => {
+        const quantity: ShipmentRow["quantity"] = value === "" ? "" : Number(value);
+        const nextRows: ShipmentRow[] = current.map((row) =>
+          row.rowNumber === rowNumber
+            ? {
+                ...row,
+                quantity,
+              }
+            : row,
+        );
+        void persistRows(nextRows).catch((error) => {
+          setSubmitError(error instanceof Error ? error.message : "预览数据保存入库失败");
+        });
+        return nextRows;
+      });
+      return;
+    }
+
+    setRows((current) => {
+      const nextRows = current.map((row) => {
+        if (row.rowNumber !== rowNumber) return row;
 
         return {
           ...row,
           [field]: value,
         };
-      }),
-    );
+      });
+      void persistRows(nextRows).catch((error) => {
+        setSubmitError(error instanceof Error ? error.message : "预览数据保存入库失败");
+      });
+      return nextRows;
+    });
 
     setSubmitProgress((current) =>
       current.phase === "done" || current.phase === "idle"
@@ -174,9 +251,8 @@ export function PreviewGrid() {
   }
 
   function appendRow() {
-    setRows((current) => [
-      ...current,
-      {
+    setRows((current) => {
+      const emptyRow: ShipmentRow = {
         rowNumber: current.length ? Math.max(...current.map((item) => item.rowNumber)) + 1 : 2,
         externalCode: "",
         storeName: "",
@@ -188,12 +264,26 @@ export function PreviewGrid() {
         quantity: "",
         spec: "",
         remark: "",
-      },
-    ]);
+      };
+      const nextRows = [
+        ...current,
+        emptyRow,
+      ];
+      void persistRows(nextRows).catch((error) => {
+        setSubmitError(error instanceof Error ? error.message : "预览数据保存入库失败");
+      });
+      return nextRows;
+    });
   }
 
   function removeRow(rowNumber: number) {
-    setRows((current) => current.filter((row) => row.rowNumber !== rowNumber));
+    setRows((current) => {
+      const nextRows = current.filter((row) => row.rowNumber !== rowNumber);
+      void persistRows(nextRows).catch((error) => {
+        setSubmitError(error instanceof Error ? error.message : "预览数据保存入库失败");
+      });
+      return nextRows;
+    });
   }
 
   async function submitRows() {
@@ -215,6 +305,7 @@ export function PreviewGrid() {
     });
     let progressTimer: number | undefined;
     try {
+      await persistRows(rows);
       const totalChunks = Math.max(1, Math.ceil(rows.length / 100));
       let optimisticChunk = 0;
       progressTimer = window.setInterval(() => {
@@ -236,6 +327,7 @@ export function PreviewGrid() {
         body: JSON.stringify({
           fileName: payload?.fileName || "manual-preview.xlsx",
           templateSignature: payload?.template.signature || "manual-preview",
+          importSessionId: sessionId,
           rows,
         }),
       });
@@ -248,10 +340,6 @@ export function PreviewGrid() {
         throw new Error("提交返回结果不完整");
       }
 
-      if ("saved" in data && data.saved) {
-        clearImportSession();
-      }
-
       if (progressTimer) {
         window.clearInterval(progressTimer);
       }
@@ -260,14 +348,12 @@ export function PreviewGrid() {
         phase: "done",
         percent: 100,
         message: "提交完成",
-        current: "totals" in data ? data.totals.successRows : rows.length,
-        total: "totals" in data ? data.totals.totalRows : rows.length,
+        current: data.totals.successRows,
+        total: data.totals.totalRows,
       });
 
       setSubmitMessage(
-        "saved" in data && data.saved
-          ? `提交完成：成功 ${data.totals.successRows} 条，失败 ${data.totals.failedRows} 条，分 ${data.progress?.totalChunks || 1} 批处理`
-          : `数据库未配置，已完成提交流程验证：总计 ${data.totals.totalRows} 条`,
+        `提交完成：成功 ${data.totals.successRows} 条，失败 ${data.totals.failedRows} 条，分 ${data.progress?.totalChunks || 1} 批处理`,
       );
     } catch (requestError) {
       if (progressTimer) {
@@ -300,8 +386,8 @@ export function PreviewGrid() {
             <h2 className="text-base font-semibold text-slate-950">预览编辑表格</h2>
             <p className="mt-2 text-sm text-slate-500">
               {payload
-                ? `当前文件：${payload.fileName} / ${payload.sheetName}。可直接编辑、导出、提交。`
-                : "当前未检测到上传会话，展示的是本地演示数据。"}
+                ? `当前文件：${payload.fileName} / ${payload.sheetName}。编辑、导出和提交都基于数据库会话 #${sessionId}。`
+                : "当前未检测到数据库解析会话，请先在导入工作台上传并保存入库。"}
             </p>
             <p className="mt-2 text-xs text-slate-500">
               {payload?.performance.largeDataset
@@ -316,6 +402,7 @@ export function PreviewGrid() {
             <button
               type="button"
               onClick={() => exportRowsToCsv(rows)}
+              disabled={!payload}
               className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               导出当前数据
@@ -323,6 +410,7 @@ export function PreviewGrid() {
             <button
               type="button"
               onClick={appendRow}
+              disabled={!payload}
               className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               新增空行
@@ -330,7 +418,7 @@ export function PreviewGrid() {
             <button
               type="button"
               onClick={submitRows}
-              disabled={isSubmitting}
+              disabled={!payload || isSubmitting}
               className="rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? "提交中..." : "提交下单"}

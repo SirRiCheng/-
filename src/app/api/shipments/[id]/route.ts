@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { demoOrders } from "@/lib/mock-data";
-import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -12,15 +11,8 @@ export async function GET(
 ) {
   const id = Number(context.params.id);
 
-  if (!isDatabaseConfigured()) {
-    const order = demoOrders.find((item) => item.id === id);
-    if (!order) {
-      return NextResponse.json({ error: "记录不存在。" }, { status: 404 });
-    }
-    return NextResponse.json(order);
-  }
-
   try {
+    assertDatabaseConfigured();
     await ensureSchema();
     const pool = getPool();
     const [rows] = await pool.query(

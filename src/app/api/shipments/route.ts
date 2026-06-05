@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { demoOrders } from "@/lib/mock-data";
-import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -10,22 +9,8 @@ export async function GET(request: Request) {
   const page = Number(searchParams.get("page") || 1);
   const pageSize = Number(searchParams.get("pageSize") || 20);
 
-  if (!isDatabaseConfigured()) {
-    const filtered = demoOrders.filter((order) => {
-      const haystack = `${order.externalCode || ""} ${order.storeName} ${order.receiverName} ${order.skuCode} ${order.skuName}`;
-      return haystack.includes(keyword);
-    });
-
-    return NextResponse.json({
-      items: filtered.slice((page - 1) * pageSize, page * pageSize),
-      total: filtered.length,
-      page,
-      pageSize,
-      mock: true,
-    });
-  }
-
   try {
+    assertDatabaseConfigured();
     await ensureSchema();
     const pool = getPool();
     const likeKeyword = `%${keyword}%`;
@@ -90,7 +75,6 @@ export async function GET(request: Request) {
       total,
       page,
       pageSize,
-      mock: false,
     });
   } catch (error) {
     return NextResponse.json(

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
 import { TemplateMappingRecord } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -53,11 +53,8 @@ function dedupeTemplateMappingRecords(records: TemplateMappingRecord[]) {
 }
 
 export async function GET() {
-  if (!isDatabaseConfigured()) {
-    return NextResponse.json({ items: [], saved: false, reason: "数据库未配置。" });
-  }
-
   try {
+    assertDatabaseConfigured();
     await ensureSchema();
     const pool = getPool();
     const [rows] = await pool.query(
@@ -73,28 +70,21 @@ export async function GET() {
       saved: true,
     });
   } catch (error) {
-    return NextResponse.json({
-      items: [],
-      saved: false,
-      reason: error instanceof Error ? error.message : "查询模板映射失败。",
-    });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "查询模板映射失败。" },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(request: Request) {
   try {
+    assertDatabaseConfigured();
     const body = await request.json();
     const { templateSignature, templateName = "", headers = [], mapping = {}, rule = null } = body;
 
     if (!templateSignature) {
       return NextResponse.json({ error: "templateSignature 必填。" }, { status: 400 });
-    }
-
-    if (!isDatabaseConfigured()) {
-      return NextResponse.json({
-        saved: false,
-        reason: "数据库未配置，当前仅完成本地页面和 API 骨架。",
-      });
     }
 
     await ensureSchema();
@@ -119,36 +109,43 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ saved: true, templateSignature });
   } catch (error) {
-    return NextResponse.json({
-      saved: false,
-      reason: error instanceof Error ? error.message : "保存模板映射失败。",
-    });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "保存模板映射失败。" },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
-  const templateSignature = searchParams.get("templateSignature");
+  const templateSignature = searchParams.get("templateSignature")?.trim();
+  let templateSignatures = templateSignature ? [templateSignature] : [];
 
-  if (!templateSignature) {
-    return NextResponse.json({ error: "缺少 templateSignature。" }, { status: 400 });
+  if (!templateSignatures.length) {
+    try {
+      const body = (await request.json()) as { templateSignatures?: string[] };
+      templateSignatures = Array.from(new Set((body.templateSignatures || []).map((item) => item.trim()).filter(Boolean)));
+    } catch {
+      templateSignatures = [];
+    }
   }
 
-  if (!isDatabaseConfigured()) {
-    return NextResponse.json({ deleted: false, reason: "数据库未配置。" });
+  if (!templateSignatures.length) {
+    return NextResponse.json({ error: "缺少 templateSignature 或 templateSignatures。" }, { status: 400 });
   }
 
   try {
+    assertDatabaseConfigured();
     await ensureSchema();
     const pool = getPool();
-    await pool.query("DELETE FROM template_mappings WHERE template_signature = :templateSignature", {
-      templateSignature,
+    await pool.query("DELETE FROM template_mappings WHERE template_signature IN (:templateSignatures)", {
+      templateSignatures,
     });
-    return NextResponse.json({ deleted: true, templateSignature });
+    return NextResponse.json({ deleted: true, templateSignatures });
   } catch (error) {
-    return NextResponse.json({
-      deleted: false,
-      reason: error instanceof Error ? error.message : "删除模板映射失败。",
-    });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "删除模板映射失败。" },
+      { status: 500 },
+    );
   }
 }

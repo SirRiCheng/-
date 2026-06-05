@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Copy, FileSpreadsheet, Plus, Save, Trash2 } from "lucide-react";
 import { rebuildParsedPayload } from "@/lib/excel/standardize";
-import { deleteRuleRecord, loadRuleRecords, sanitizeRuleRecords, saveRuleRecords, upsertRuleRecord } from "@/lib/import-session";
+import { sanitizeRuleRecords } from "@/lib/import-session";
 import { shipmentFields, type FieldMapping, type ParsedImportPayload, type ParseRule, type TemplateMappingRecord } from "@/lib/types";
 
 const fieldLabels: Record<(typeof shipmentFields)[number], string> = {
@@ -98,6 +98,7 @@ function getRuleWarnings(record: TemplateMappingRecord) {
 export function RulesManager() {
   const [records, setRecords] = useState<TemplateMappingRecord[]>([]);
   const [selectedSignature, setSelectedSignature] = useState("");
+  const [checkedSignatures, setCheckedSignatures] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [previewFile, setPreviewFile] = useState<File | null>(null);
@@ -111,10 +112,6 @@ export function RulesManager() {
     let active = true;
 
     async function fetchRecords() {
-      const storedRecords = loadRuleRecords();
-      setRecords(storedRecords);
-      setSelectedSignature(storedRecords[0]?.templateSignature || "");
-
       try {
         const response = await fetch("/api/template-mappings", { cache: "no-store" });
         const data = (await response.json()) as { items?: TemplateMappingRecord[]; error?: string };
@@ -124,14 +121,11 @@ export function RulesManager() {
         if (!active || !data.items) return;
 
         const nextRecords = sanitizeRuleRecords(data.items);
-        if (nextRecords.length) {
-          setRecords(nextRecords);
-          saveRuleRecords(nextRecords);
-          setSelectedSignature(nextRecords[0]?.templateSignature || "");
-        }
+        setRecords(nextRecords);
+        setSelectedSignature(nextRecords[0]?.templateSignature || "");
       } catch (requestError) {
         if (active) {
-          setError(requestError instanceof Error ? requestError.message : "规则库加载失败，已使用本地缓存");
+          setError(requestError instanceof Error ? requestError.message : "规则库加载失败，请检查数据库配置");
         }
       }
     }
@@ -146,7 +140,9 @@ export function RulesManager() {
   function persist(nextRecords: TemplateMappingRecord[]) {
     const sanitizedRecords = sanitizeRuleRecords(nextRecords);
     setRecords(sanitizedRecords);
-    saveRuleRecords(sanitizedRecords);
+    setCheckedSignatures((current) =>
+      current.filter((signature) => sanitizedRecords.some((record) => record.templateSignature === signature)),
+    );
   }
 
   function updateSelected(patch: Partial<TemplateMappingRecord>) {
@@ -184,21 +180,19 @@ export function RulesManager() {
   async function saveRecord(record: TemplateMappingRecord) {
     setMessage("");
     setError("");
-    const savedRecord = upsertRuleRecord({
+    const now = new Date().toISOString();
+    const savedRecord: TemplateMappingRecord = {
       ...record,
+      id: record.id || Date.now(),
+      createdAt: record.createdAt || now,
+      updatedAt: now,
       rule: record.rule
         ? {
             ...record.rule,
             fieldMapping: record.mapping,
           }
         : undefined,
-    });
-    persist(
-      records.some((item) => item.templateSignature === savedRecord.templateSignature)
-        ? records.map((item) => (item.templateSignature === savedRecord.templateSignature ? savedRecord : item))
-        : [savedRecord, ...records],
-    );
-    setSelectedSignature(savedRecord.templateSignature);
+    };
 
     try {
       const response = await fetch("/api/template-mappings", {
@@ -212,9 +206,15 @@ export function RulesManager() {
       if (!response.ok) {
         throw new Error(data.error || "保存规则失败");
       }
-      setMessage(data.saved ? "规则已保存到服务器端规则库" : data.reason || "规则已保存到本地缓存");
+      persist(
+        records.some((item) => item.templateSignature === savedRecord.templateSignature)
+          ? records.map((item) => (item.templateSignature === savedRecord.templateSignature ? savedRecord : item))
+          : [savedRecord, ...records],
+      );
+      setSelectedSignature(savedRecord.templateSignature);
+      setMessage("规则已保存到数据库规则库");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "保存规则失败，已保留本地缓存");
+      setError(requestError instanceof Error ? requestError.message : "保存规则失败，请检查数据库配置");
     }
   }
 
@@ -266,20 +266,36 @@ export function RulesManager() {
   }
 
   async function removeRecord(record: TemplateMappingRecord) {
+    await removeRecords([record.templateSignature]);
+  }
+
+  async function removeRecords(templateSignatures: string[]) {
     setMessage("");
     setError("");
-    deleteRuleRecord(record.templateSignature);
-    const nextRecords = records.filter((item) => item.templateSignature !== record.templateSignature);
-    persist(nextRecords);
-    setSelectedSignature(nextRecords[0]?.templateSignature || "");
+    const nextTemplateSignatures = Array.from(new Set(templateSignatures.map((signature) => signature.trim()).filter(Boolean)));
+    if (!nextTemplateSignatures.length) return;
 
     try {
-      await fetch(`/api/template-mappings?templateSignature=${encodeURIComponent(record.templateSignature)}`, {
+      const response = await fetch("/api/template-mappings", {
         method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ templateSignatures: nextTemplateSignatures }),
       });
-      setMessage("规则已删除");
-    } catch {
-      setMessage("规则已从本地删除，服务器端删除失败时可稍后重试");
+      const data = (await response.json()) as { deleted?: boolean; error?: string };
+      if (!response.ok) {
+        throw new Error(data.error || "删除规则失败");
+      }
+      const deleteSet = new Set(nextTemplateSignatures);
+      const nextRecords = records.filter((item) => !deleteSet.has(item.templateSignature));
+      persist(nextRecords);
+      setSelectedSignature((current) => (current && !deleteSet.has(current) ? current : nextRecords[0]?.templateSignature || ""));
+      setPreview(null);
+      setPreviewError("");
+      setMessage(nextTemplateSignatures.length > 1 ? `已删除 ${nextTemplateSignatures.length} 条规则` : "规则已删除");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "删除规则失败，请检查数据库配置");
     }
   }
 
@@ -291,23 +307,34 @@ export function RulesManager() {
             <h2 className="text-base font-semibold text-slate-950">解析规则库</h2>
             <p className="mt-2 text-sm text-slate-500">选择一条规则后在右侧编辑。</p>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              const record = createEmptyRuleRecord();
-              const nextRecords = sanitizeRuleRecords([record, ...records]);
-              persist(nextRecords);
-              setSelectedSignature(record.templateSignature);
-              setPreview(null);
-              setPreviewError("");
-              setMessage("新规则已创建，配置字段后可上传样例文件试解析。");
-              setError("");
-            }}
-            className="inline-flex items-center gap-2 rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
-          >
-            <Plus className="h-4 w-4" />
-            新建规则
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!checkedSignatures.length}
+              onClick={() => void removeRecords(checkedSignatures)}
+              className="inline-flex items-center gap-2 rounded border border-rose-200 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              批量删除
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const record = createEmptyRuleRecord();
+                const nextRecords = sanitizeRuleRecords([record, ...records]);
+                persist(nextRecords);
+                setSelectedSignature(record.templateSignature);
+                setPreview(null);
+                setPreviewError("");
+                setMessage("新规则已创建，配置字段后可上传样例文件试解析。");
+                setError("");
+              }}
+              className="inline-flex items-center gap-2 rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
+            >
+              <Plus className="h-4 w-4" />
+              新建规则
+            </button>
+          </div>
         </div>
 
         {message ? (
@@ -326,6 +353,17 @@ export function RulesManager() {
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-100 text-left text-slate-900">
                 <tr>
+                  <th className="w-12 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={records.length > 0 && checkedSignatures.length === records.length}
+                      onChange={(event) =>
+                        setCheckedSignatures(event.target.checked ? records.map((record) => record.templateSignature) : [])
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-[var(--app-accent)]"
+                      aria-label="选择全部规则"
+                    />
+                  </th>
                   <th className="px-4 py-3 font-semibold">规则名称</th>
                   <th className="px-4 py-3 font-semibold">操作</th>
                 </tr>
@@ -336,6 +374,21 @@ export function RulesManager() {
                     key={record.templateSignature}
                     className={selectedRecord?.templateSignature === record.templateSignature ? "bg-cyan-50" : undefined}
                   >
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={checkedSignatures.includes(record.templateSignature)}
+                        onChange={(event) =>
+                          setCheckedSignatures((current) =>
+                            event.target.checked
+                              ? [...current, record.templateSignature]
+                              : current.filter((signature) => signature !== record.templateSignature),
+                          )
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-[var(--app-accent)]"
+                        aria-label={`选择规则 ${record.templateName || record.templateSignature}`}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-950">{record.templateName || record.rule?.name || "未命名规则"}</p>
                       <p className="mt-1 max-w-[18rem] truncate text-xs text-slate-500">{record.templateSignature}</p>

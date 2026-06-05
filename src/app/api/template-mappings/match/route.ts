@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -11,11 +11,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "缺少 templateSignature。" }, { status: 400 });
   }
 
-  if (!isDatabaseConfigured()) {
-    return NextResponse.json({ matched: false, record: null });
-  }
-
   try {
+    assertDatabaseConfigured();
     await ensureSchema();
     const pool = getPool();
     const [rows] = await pool.query(

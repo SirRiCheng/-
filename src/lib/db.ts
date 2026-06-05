@@ -29,6 +29,20 @@ const schemaQueries = [
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `,
   `
+    CREATE TABLE IF NOT EXISTS import_sessions (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      file_name VARCHAR(255) NOT NULL,
+      sheet_name VARCHAR(255) NOT NULL DEFAULT '',
+      template_signature VARCHAR(1024) NOT NULL,
+      payload_json JSON NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'parsed',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_template_signature (template_signature(255)),
+      INDEX idx_updated_at (updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `,
+  `
     CREATE TABLE IF NOT EXISTS shipments (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       external_code VARCHAR(255) NULL,
@@ -100,6 +114,12 @@ export function isDatabaseConfigured() {
   return hasValue(process.env.TIDB_HOST) || hasValue(process.env.MYSQL_HOST) || hasValue(process.env.MYSQL_SOCKET);
 }
 
+export function assertDatabaseConfigured() {
+  if (!isDatabaseConfigured()) {
+    throw new Error("数据库未配置，请在 .env.local 配置 TIDB_HOST 或 MYSQL_HOST/MYSQL_SOCKET。");
+  }
+}
+
 let pool: mysql.Pool | null = null;
 let schemaPromise: Promise<void> | undefined;
 
@@ -111,9 +131,7 @@ export function getPool() {
 }
 
 export async function ensureSchema() {
-  if (!isDatabaseConfigured()) {
-    return;
-  }
+  assertDatabaseConfigured();
 
   if (!schemaPromise) {
     schemaPromise = (async () => {
@@ -168,6 +186,7 @@ async function addColumnIfMissing(activePool: mysql.Pool, tableName: string, col
 
 async function migrateExistingSchema(activePool: mysql.Pool) {
   await addColumnIfMissing(activePool, "template_mappings", "rule_json", "rule_json JSON NULL");
+  await addColumnIfMissing(activePool, "import_sessions", "status", "status VARCHAR(32) NOT NULL DEFAULT 'parsed'");
   await addColumnIfMissing(activePool, "shipments", "store_name", "store_name VARCHAR(255) NOT NULL DEFAULT ''");
   await addColumnIfMissing(activePool, "shipments", "sku_code", "sku_code VARCHAR(255) NOT NULL DEFAULT ''");
   await addColumnIfMissing(activePool, "shipments", "sku_name", "sku_name VARCHAR(255) NOT NULL DEFAULT ''");

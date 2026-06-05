@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { PreviewGrid } from "@/components/preview-grid";
 
 export default function PreviewPage() {
@@ -12,7 +13,9 @@ export default function PreviewPage() {
         </div>
       </section>
       <div className="mt-5">
-      <PreviewGrid />
+        <Suspense fallback={<div className="panel rounded p-5 text-sm text-slate-500">预览数据加载中...</div>}>
+          <PreviewGrid />
+        </Suspense>
       </div>
     </main>
   );

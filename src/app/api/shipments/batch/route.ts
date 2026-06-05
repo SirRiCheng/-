@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
 import { sendDingTalkNotification } from "@/lib/dingtalk";
 import { ShipmentRow, SubmitBatchResult } from "@/lib/types";
 import { detectDuplicateExternalCodes, validateShipmentRow } from "@/lib/validators/shipment";
@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     const rows = (body.rows || []) as ShipmentRow[];
     const fileName = String(body.fileName || "manual-submit.xlsx");
     const templateSignature = String(body.templateSignature || "manual");
+    const importSessionId = Number(body.importSessionId || 0);
 
     if (!rows.length) {
       return NextResponse.json({ error: "提交数据为空。" }, { status: 400 });
@@ -40,25 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "存在错误行，禁止提交。", issues }, { status: 400 });
     }
 
-    if (!isDatabaseConfigured()) {
-      await notifyImportResult("批量下单未写入数据库", [
-        `- 文件：${fileName}`,
-        `- 模板：${templateSignature}`,
-        `- 行数：${rows.length}`,
-        "- 原因：数据库未配置",
-      ]);
-      return NextResponse.json({
-        saved: false,
-        reason: "数据库未配置，当前仅完成本地开发骨架。",
-        totals: { totalRows: rows.length, successRows: 0, failedRows: rows.length },
-        progress: {
-          chunkSize: INSERT_CHUNK_SIZE,
-          totalChunks: Math.max(1, Math.ceil(rows.length / INSERT_CHUNK_SIZE)),
-          processedChunks: 0,
-        },
-      });
-    }
-
+    assertDatabaseConfigured();
     await ensureSchema();
     const pool = getPool();
     const externalCodes = Array.from(new Set(rows.map((row) => row.externalCode).filter(Boolean)));
@@ -194,6 +177,17 @@ export async function POST(request: Request) {
         },
       );
 
+      if (importSessionId) {
+        await connection.query(
+          `
+            UPDATE import_sessions
+            SET status = 'submitted'
+            WHERE id = :importSessionId
+          `,
+          { importSessionId },
+        );
+      }
+
       await connection.commit();
 
       const result: SubmitBatchResult = {
@@ -229,6 +223,9 @@ export async function POST(request: Request) {
       connection.release();
     }
   } catch (error) {
+    await notifyImportResult("批量下单写入失败", [
+      `- 原因：${error instanceof Error ? error.message : "批量提交失败。"}`,
+    ]);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "批量提交失败。" },
       { status: 500 },

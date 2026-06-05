@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { demoOrders } from "@/lib/mock-data";
 import { ShipmentRecord } from "@/lib/types";
 
 async function getOrder(id: string) {
@@ -14,7 +13,7 @@ async function getOrder(id: string) {
     }
     return (await response.json()) as ShipmentRecord;
   } catch {
-    return demoOrders.find((item) => item.id === Number(id)) || null;
+    return null;
   }
 }
 

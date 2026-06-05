@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { demoOrders } from "@/lib/mock-data";
 import { ShipmentRecord } from "@/lib/types";
 
 type ShipmentsResponse = {
@@ -10,7 +9,6 @@ type ShipmentsResponse = {
   total: number;
   page: number;
   pageSize: number;
-  mock?: boolean;
 };
 
 export function OrdersTable() {
@@ -21,7 +19,6 @@ export function OrdersTable() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [isLoading, setIsLoading] = useState(true);
-  const [isMock, setIsMock] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -46,13 +43,11 @@ export function OrdersTable() {
         const payload = data as ShipmentsResponse;
         setItems(payload.items);
         setTotal(payload.total);
-        setIsMock(Boolean(payload.mock));
       } catch (requestError) {
         if (!active) return;
         setError(requestError instanceof Error ? requestError.message : "运单列表查询失败");
-        setItems(demoOrders);
-        setTotal(demoOrders.length);
-        setIsMock(true);
+        setItems([]);
+        setTotal(0);
       } finally {
         if (active) {
           setIsLoading(false);
@@ -76,15 +71,11 @@ export function OrdersTable() {
           <div>
             <h2 className="text-base font-semibold text-slate-950">查询表格</h2>
             <p className="mt-2 text-sm text-slate-500">
-              支持按外部编码、门店、收件人、SKU 搜索。数据库未配置时自动回退 mock 数据。
+              支持按外部编码、门店、收件人、SKU 搜索，数据来自已配置的 MySQL/TiDB。
             </p>
           </div>
-          <span
-            className={`rounded px-3 py-1 text-xs font-medium ${
-              isMock ? "bg-cyan-100 text-cyan-700" : "bg-emerald-100 text-emerald-700"
-            }`}
-          >
-            {isMock ? "Mock 数据" : "数据库数据"}
+          <span className="rounded bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+            数据库数据
           </span>
         </div>
 

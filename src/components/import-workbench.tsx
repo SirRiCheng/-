@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { rebuildParsedPayload } from "@/lib/excel/standardize";
-import { loadRuleRecords, saveImportSession, saveManualMapping, saveRuleRecords } from "@/lib/import-session";
+import { sanitizeRuleRecords } from "@/lib/import-session";
 import {
   shipmentFields,
   type FieldMapping,
@@ -50,6 +50,7 @@ export function ImportWorkbench() {
   const [generatedBy, setGeneratedBy] = useState("");
   const [ruleRecords, setRuleRecords] = useState<TemplateMappingRecord[]>([]);
   const [selectedRuleSignature, setSelectedRuleSignature] = useState("");
+  const [sessionId, setSessionId] = useState<number | null>(null);
   const [progress, setProgress] = useState<ImportProgressState>({
     phase: "idle",
     percent: 0,
@@ -60,20 +61,20 @@ export function ImportWorkbench() {
     let active = true;
 
     async function fetchRuleRecords() {
-      const localRecords = loadRuleRecords();
-      setRuleRecords(localRecords);
-
       try {
         const response = await fetch("/api/template-mappings", { cache: "no-store" });
-        if (!response.ok) return;
+        const data = (await response.json()) as { items?: TemplateMappingRecord[]; error?: string };
+        if (!response.ok) {
+          throw new Error(data.error || "数据库规则库加载失败");
+        }
 
-        const data = (await response.json()) as { items?: TemplateMappingRecord[] };
-        if (!active || !data.items?.length) return;
+        if (!active) return;
 
-        setRuleRecords(data.items);
-        saveRuleRecords(data.items);
-      } catch {
-        // 规则库查询失败时继续使用本地缓存，不影响上传试解析。
+        setRuleRecords(sanitizeRuleRecords(data.items || []));
+      } catch (requestError) {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : "数据库规则库加载失败");
+        }
       }
     }
 
@@ -100,19 +101,68 @@ export function ImportWorkbench() {
         : undefined,
     };
 
-    saveManualMapping(record);
+    const response = await fetch("/api/template-mappings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(record),
+    });
+    const data = (await response.json()) as { saved?: boolean; error?: string; reason?: string };
 
-    try {
-      await fetch("/api/template-mappings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(record),
-      });
-    } catch {
-      // Fall back to local storage only if remote persistence fails.
+    if (!response.ok) {
+      throw new Error(data.error || "保存规则失败，请检查数据库配置。");
     }
+
+    await fetchRuleRecordsFromDatabase();
+  }
+
+  async function fetchRuleRecordsFromDatabase() {
+    const response = await fetch("/api/template-mappings", { cache: "no-store" });
+    const data = (await response.json()) as { items?: TemplateMappingRecord[]; error?: string };
+    if (!response.ok) {
+      throw new Error(data.error || "数据库规则库加载失败");
+    }
+    setRuleRecords(sanitizeRuleRecords(data.items || []));
+  }
+
+  async function saveImportPayload(payload: ParsedImportPayload) {
+    const response = await fetch("/api/import-sessions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = (await response.json()) as { id?: number; error?: string };
+
+    if (!response.ok || !data.id) {
+      throw new Error(data.error || "解析结果保存入库失败");
+    }
+
+    setSessionId(data.id);
+    return data.id;
+  }
+
+  async function updateImportPayload(payload: ParsedImportPayload) {
+    if (!sessionId) {
+      return saveImportPayload(payload);
+    }
+
+    const response = await fetch("/api/import-sessions", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id: sessionId, payload }),
+    });
+    const data = (await response.json()) as { saved?: boolean; error?: string };
+
+    if (!response.ok) {
+      throw new Error(data.error || "解析结果更新入库失败");
+    }
+
+    return sessionId;
   }
 
   async function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -124,6 +174,7 @@ export function ImportWorkbench() {
     setResult(null);
     setManualMapping({});
     setGeneratedBy("");
+    setSessionId(null);
     setProgress({
       phase: "uploading",
       percent: 18,
@@ -203,11 +254,11 @@ export function ImportWorkbench() {
       }
       setResult(payload);
       setManualMapping(payload.template.mapping);
-      saveImportSession(payload);
+      const savedSessionId = await saveImportPayload(payload);
       setProgress({
         phase: "ready",
         percent: 100,
-        message: "推荐规则已生成，导入数据已准备好",
+        message: `推荐规则已生成，解析结果已入库 #${savedSessionId}`,
         current: payload.totals.parsedRows,
         total: payload.totals.parsedRows,
       });
@@ -245,12 +296,12 @@ export function ImportWorkbench() {
           <div className="relative">
             <span className="block text-base font-semibold text-slate-900">拖拽或点击上传文件</span>
             <span className="mt-2 block max-w-md text-sm leading-6 text-slate-500">
-              支持 `.xlsx` / `.xls` / `.docx` / `.pdf`。Excel 可执行试解析，Word/PDF 会生成待确认的解析规则入口。
+              支持 `.xlsx` / `.xls` / `.docx` / `.pdf` / `.txt`。Excel 走表格解析，其他文件调用大模型抽取结构化下单数据。
             </span>
           </div>
           <input
             type="file"
-            accept=".xlsx,.xls,.docx,.pdf"
+            accept=".xlsx,.xls,.doc,.docx,.pdf,.txt"
             className="hidden"
             onChange={onFileChange}
           />
@@ -409,22 +460,27 @@ export function ImportWorkbench() {
                     type="button"
                     disabled={!canSaveManualMapping}
                     onClick={async () => {
-                      const nextTemplate = {
-                        ...result.template,
-                        mapping: manualMapping,
-                        rule: result.template.rule
-                          ? {
-                              ...result.template.rule,
-                              fieldMapping: manualMapping,
-                            }
-                          : undefined,
-                        matchedBy: "manual" as const,
-                        missingFields: getMissingRequiredFields(manualMapping),
-                      };
-                      const nextPayload = rebuildParsedPayload(result, nextTemplate);
-                      setResult(nextPayload);
-                      saveImportSession(nextPayload);
-                      await persistManualMapping(nextPayload, manualMapping);
+                      try {
+                        const nextTemplate = {
+                          ...result.template,
+                          mapping: manualMapping,
+                          rule: result.template.rule
+                            ? {
+                                ...result.template.rule,
+                                fieldMapping: manualMapping,
+                              }
+                            : undefined,
+                          matchedBy: "manual" as const,
+                          missingFields: getMissingRequiredFields(manualMapping),
+                        };
+                        const nextPayload = rebuildParsedPayload(result, nextTemplate);
+                        await persistManualMapping(nextPayload, manualMapping);
+                        await updateImportPayload(nextPayload);
+                        setResult(nextPayload);
+                        setError("");
+                      } catch (requestError) {
+                        setError(requestError instanceof Error ? requestError.message : "保存规则失败，请检查数据库配置。");
+                      }
                     }}
                     className="rounded bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -438,16 +494,20 @@ export function ImportWorkbench() {
                 type="button"
                 disabled={!result.template.rule}
                 onClick={async () => {
-                  await persistManualMapping(result, manualMapping);
-                  setRuleRecords(loadRuleRecords());
-                  setSelectedRuleSignature(result.template.signature);
-                  setProgress({
-                    phase: "ready",
-                    percent: 100,
-                    message: "解析规则已确认保存，可在下次导入时复用",
-                    current: result.totals.parsedRows,
-                    total: result.totals.parsedRows,
-                  });
+                  try {
+                    await persistManualMapping(result, manualMapping);
+                    setSelectedRuleSignature(result.template.signature);
+                    setError("");
+                    setProgress({
+                      phase: "ready",
+                      percent: 100,
+                      message: "解析规则已保存到数据库，可在下次导入时复用",
+                      current: result.totals.parsedRows,
+                      total: result.totals.parsedRows,
+                    });
+                  } catch (requestError) {
+                    setError(requestError instanceof Error ? requestError.message : "保存规则失败，请检查数据库配置。");
+                  }
                 }}
                 className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -455,13 +515,13 @@ export function ImportWorkbench() {
               </button>
               <button
                 type="button"
-                onClick={() => router.push("/preview")}
+                onClick={() => router.push(sessionId ? `/preview?sessionId=${sessionId}` : "/preview")}
                 className="rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-500"
               >
                 进入预览编辑
               </button>
               <Link
-                href="/preview"
+                href={sessionId ? `/preview?sessionId=${sessionId}` : "/preview"}
                 className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 打开预览页
