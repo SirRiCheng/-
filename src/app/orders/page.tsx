@@ -2,23 +2,18 @@ import { OrdersTable } from "@/components/orders-table";
 
 export default function OrdersPage() {
   return (
-    <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-8 px-6 py-8 lg:px-10 lg:py-10">
-      <section className="chapter-shell panel section-enter rounded-[36px] px-8 py-8 lg:px-10 lg:py-9">
-        <p className="eyebrow">Imported Orders</p>
-        <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-3">
-            <h1 className="headline text-3xl font-semibold text-slate-950 lg:text-5xl">已导入运单列表</h1>
-            <p className="max-w-3xl text-sm leading-7 text-slate-600 lg:text-base">
-              所有提交成功的运单都会在这里回流，形成从 Excel 到数据库再到回查的完整闭环。
-            </p>
-          </div>
-          <div className="data-chip metric-stack rounded-[22px] px-4 py-3">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">数据来源</p>
-            <p className="mt-1 text-lg font-semibold text-slate-900">API / Database</p>
-          </div>
+    <main className="mx-auto w-full max-w-7xl px-5 py-6 lg:px-8">
+      <section className="panel rounded p-5">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-950">已导入运单列表</h1>
+          <p className="mt-2 text-sm text-slate-500">
+            查询已经提交的运单记录，支持按外部编码、门店、收件人和 SKU 搜索。
+          </p>
         </div>
       </section>
+      <div className="mt-5">
       <OrdersTable />
+      </div>
     </main>
   );
 }

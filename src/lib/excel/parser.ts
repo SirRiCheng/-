@@ -1,11 +1,10 @@
 import * as XLSX from "xlsx";
 import { fieldAliasMap } from "@/lib/excel/aliases";
-import { PARSE_CHUNK_SIZE, RECOMMENDED_PAGE_SIZE, standardizeRows, LARGE_DATASET_THRESHOLD } from "@/lib/excel/standardize";
+import { standardizeRowsByTemplate } from "@/lib/excel/standardize";
 import { buildRuleFromTemplate, mergeRuleIntoTemplate } from "@/lib/rules/rule-engine";
 import {
   FieldMapping,
   ParsedImportPayload,
-  ShipmentRow,
   ShipmentField,
   TemplateMatchResult,
 } from "@/lib/types";
@@ -123,82 +122,6 @@ function pickHeaderCandidate(workbook: XLSX.WorkBook) {
   return bestCandidate;
 }
 
-function normalizeQuantityCell(value: unknown) {
-  const text = normalizeText(value);
-  if (!text) return [];
-
-  return text
-    .split(/\n|；|;/)
-    .map((part) => normalizeText(part))
-    .filter(Boolean)
-    .map((part) => {
-      const match = part.match(/^(.+?)[xX×*](\d+(?:\.\d+)?)$/);
-      if (!match) return { skuName: "", quantity: Number(part) };
-      return {
-        skuName: normalizeText(match[1]),
-        quantity: Number(match[2]),
-      };
-    })
-    .filter((item) => Number.isFinite(item.quantity) && item.quantity > 0);
-}
-
-function getMatrixHeaders(headers: string[], template: TemplateMatchResult) {
-  const mappedHeaders = new Set(Object.values(template.mapping).filter(Boolean));
-  return headers.filter((header) => normalizeText(header) && !mappedHeaders.has(header));
-}
-
-function looksLikeMatrixRows(
-  sourceRows: Array<Record<string, unknown>>,
-  headers: string[],
-  template: TemplateMatchResult,
-) {
-  const matrixHeaders = getMatrixHeaders(headers, template);
-  if (!Boolean(template.mapping.skuCode || template.mapping.skuName) || matrixHeaders.length < 2) return false;
-
-  const matrixValueCount = sourceRows
-    .slice(0, 20)
-    .reduce((total, row) => total + matrixHeaders.filter((header) => normalizeQuantityCell(row[header]).length).length, 0);
-
-  return matrixValueCount >= 2;
-}
-
-function expandMatrixRows(
-  sourceRows: Array<Record<string, unknown>>,
-  headers: string[],
-  template: TemplateMatchResult,
-  dataStartRowNumber: number,
-) {
-  const matrixHeaders = getMatrixHeaders(headers, template);
-  const rows: ShipmentRow[] = [];
-
-  sourceRows.forEach((sourceRow, rowIndex) => {
-    matrixHeaders.forEach((matrixHeader) => {
-      normalizeQuantityCell(sourceRow[matrixHeader]).forEach((item, itemIndex) => {
-        const baseRow = {
-          rowNumber: dataStartRowNumber + rowIndex + itemIndex / 100,
-          externalCode: normalizeText(sourceRow[template.mapping.externalCode || ""]) || `${matrixHeader}-${dataStartRowNumber + rowIndex}`,
-          storeName: /周一|周二|周三|周四|周五|周六|周日|日期/.test(matrixHeader)
-            ? normalizeText(sourceRow[template.mapping.storeName || ""])
-            : matrixHeader,
-          receiverName: normalizeText(sourceRow[template.mapping.receiverName || ""]),
-          receiverPhone: normalizeText(sourceRow[template.mapping.receiverPhone || ""]),
-          receiverAddress: normalizeText(sourceRow[template.mapping.receiverAddress || ""]),
-          skuCode: normalizeText(sourceRow[template.mapping.skuCode || ""]) || item.skuName,
-          skuName: item.skuName || normalizeText(sourceRow[template.mapping.skuName || ""]),
-          quantity: item.quantity,
-          spec: normalizeText(sourceRow[template.mapping.spec || ""]) || undefined,
-          remark: /周一|周二|周三|周四|周五|周六|周日|日期/.test(matrixHeader)
-            ? `配送日期：${matrixHeader}`
-            : normalizeText(sourceRow[template.mapping.remark || ""]) || undefined,
-        };
-        rows.push(baseRow);
-      });
-    });
-  });
-
-  return rows;
-}
-
 function readSheetRows(sheet: XLSX.WorkSheet, headerRowIndex: number) {
   return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     range: headerRowIndex,
@@ -215,9 +138,7 @@ export function parseWorkbookBuffer(buffer: Buffer, fileName: string): ParsedImp
     throw new Error("未找到可解析的模板表头，请检查 Excel 是否包含运单数据。");
   }
 
-  const sheet = workbook.Sheets[candidate.sheetName];
   const rawHeaders = candidate.headers;
-  const headers = rawHeaders.filter(Boolean);
   const rule = buildRuleFromTemplate(fileName, rawHeaders, candidate.template);
   const template = mergeRuleIntoTemplate(candidate.template, rule);
   const bodyRows = workbook.SheetNames.flatMap((sheetName) => {
@@ -227,24 +148,7 @@ export function parseWorkbookBuffer(buffer: Buffer, fileName: string): ParsedImp
       __sheetName: sheetName,
     }));
   });
-  const standardized = looksLikeMatrixRows(bodyRows, headers, template)
-    ? standardizeRows(
-        expandMatrixRows(bodyRows, headers, template, candidate.headerRowIndex + 2) as unknown as Array<Record<string, unknown>>,
-        {
-          externalCode: "externalCode",
-          storeName: "storeName",
-          receiverName: "receiverName",
-          receiverPhone: "receiverPhone",
-          receiverAddress: "receiverAddress",
-          skuCode: "skuCode",
-          skuName: "skuName",
-          quantity: "quantity",
-          spec: "spec",
-          remark: "remark",
-        },
-        candidate.headerRowIndex + 2,
-      )
-    : standardizeRows(bodyRows, template.mapping, candidate.headerRowIndex + 2);
+  const standardized = standardizeRowsByTemplate(bodyRows, rawHeaders, template, candidate.headerRowIndex + 2);
 
   return {
     fileName,

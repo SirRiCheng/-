@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { rebuildParsedPayload } from "@/lib/excel/standardize";
-import { loadManualMapping, loadRuleRecords, saveImportSession, saveManualMapping } from "@/lib/import-session";
+import { loadRuleRecords, saveImportSession, saveManualMapping, saveRuleRecords } from "@/lib/import-session";
 import {
   shipmentFields,
   type FieldMapping,
@@ -27,6 +27,20 @@ const fieldLabels: Record<(typeof shipmentFields)[number], string> = {
   remark: "备注",
 };
 
+function getMissingRequiredFields(mapping: FieldMapping) {
+  const hasStoreGroup = Boolean(mapping.storeName);
+  const hasReceiverGroup = Boolean(mapping.receiverName && mapping.receiverPhone && mapping.receiverAddress);
+
+  return shipmentFields.filter((field) => {
+    if (field === "externalCode" || field === "remark" || field === "spec") return false;
+    if (field === "storeName") return !hasStoreGroup && !hasReceiverGroup;
+    if (field === "receiverName" || field === "receiverPhone" || field === "receiverAddress") {
+      return !hasStoreGroup && !mapping[field];
+    }
+    return !mapping[field];
+  });
+}
+
 export function ImportWorkbench() {
   const router = useRouter();
   const [result, setResult] = useState<ParsedImportPayload | null>(null);
@@ -43,61 +57,47 @@ export function ImportWorkbench() {
   });
 
   useEffect(() => {
-    const records = loadRuleRecords();
-    setRuleRecords(records);
-    setSelectedRuleSignature(records[0]?.templateSignature || "");
-  }, []);
+    let active = true;
 
-  async function tryMatchSavedTemplate(payload: ParsedImportPayload) {
-    try {
-      const response = await fetch(
-        `/api/template-mappings/match?templateSignature=${encodeURIComponent(payload.template.signature)}`,
-        { cache: "no-store" },
-      );
+    async function fetchRuleRecords() {
+      const localRecords = loadRuleRecords();
+      setRuleRecords(localRecords);
 
-      if (response.ok) {
-        const data = (await response.json()) as { matched?: boolean; record?: TemplateMappingRecord };
-        if (data.matched && data.record?.mapping) {
-          const nextTemplate = {
-            ...payload.template,
-            mapping: data.record.mapping,
-            matchedBy: "saved-template" as const,
-            missingFields: shipmentFields.filter(
-              (field) => field !== "externalCode" && field !== "remark" && field !== "spec" && !data.record?.mapping[field],
-            ),
-            rule: data.record.rule,
-          };
-          return rebuildParsedPayload(payload, nextTemplate);
-        }
-      }
-    } catch {
-      const localRecord = loadManualMapping();
-      if (localRecord?.templateSignature === payload.template.signature) {
-          const nextTemplate = {
-            ...payload.template,
-            mapping: localRecord.mapping,
-            matchedBy: "saved-template" as const,
-            missingFields: shipmentFields.filter(
-              (field) => field !== "externalCode" && field !== "remark" && field !== "spec" && !localRecord.mapping[field],
-            ),
-            rule: localRecord.rule,
-          };
-        return rebuildParsedPayload(payload, nextTemplate);
+      try {
+        const response = await fetch("/api/template-mappings", { cache: "no-store" });
+        if (!response.ok) return;
+
+        const data = (await response.json()) as { items?: TemplateMappingRecord[] };
+        if (!active || !data.items?.length) return;
+
+        setRuleRecords(data.items);
+        saveRuleRecords(data.items);
+      } catch {
+        // 规则库查询失败时继续使用本地缓存，不影响上传试解析。
       }
     }
 
-    return payload;
-  }
+    void fetchRuleRecords();
 
-  async function persistManualMapping() {
-    if (!result) return;
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function persistManualMapping(payload = result, mapping = manualMapping) {
+    if (!payload) return;
 
     const record: TemplateMappingRecord = {
-      templateSignature: result.template.signature,
-      templateName: result.fileName,
-      headers: result.headers,
-      mapping: manualMapping,
-      rule: result.template.rule,
+      templateSignature: payload.template.signature,
+      templateName: payload.fileName,
+      headers: payload.headers,
+      mapping,
+      rule: payload.template.rule
+        ? {
+            ...payload.template.rule,
+            fieldMapping: mapping,
+          }
+        : undefined,
     };
 
     saveManualMapping(record);
@@ -154,7 +154,7 @@ export function ImportWorkbench() {
         total: 4,
       });
 
-      let payload = (await tryMatchSavedTemplate(data as ParsedImportPayload)) as ParsedImportPayload;
+      let payload = data as ParsedImportPayload;
       const selectedRule = ruleRecords.find((record) => record.templateSignature === selectedRuleSignature);
 
       if (selectedRule?.mapping) {
@@ -164,9 +164,7 @@ export function ImportWorkbench() {
           rule: selectedRule.rule,
           matchedBy: "manual",
           confidence: selectedRule.rule?.confidence || payload.template.confidence,
-          missingFields: shipmentFields.filter(
-            (field) => field !== "externalCode" && field !== "remark" && field !== "spec" && !selectedRule.mapping[field],
-          ),
+          missingFields: getMissingRequiredFields(selectedRule.mapping),
         });
         setGeneratedBy("selected-rule");
       }
@@ -196,6 +194,7 @@ export function ImportWorkbench() {
               mapping: ruleData.rule.fieldMapping,
               matchedBy: "ai-generated",
               confidence: Math.max(payload.template.confidence, ruleData.rule.confidence),
+              missingFields: getMissingRequiredFields(ruleData.rule.fieldMapping),
             },
           };
           payload = rebuildParsedPayload(payload, payload.template);
@@ -228,29 +227,24 @@ export function ImportWorkbench() {
   const canSaveManualMapping = result && Object.keys(manualMapping).length > 0;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-      <section className="panel rounded-[32px] p-6 lg:p-7">
-        <div className="mb-6 flex items-start justify-between gap-4">
+    <div className="grid gap-5">
+      <section className="panel rounded p-5">
+        <div className="mb-5 flex items-start justify-between gap-4">
           <div>
-            <p className="eyebrow">Stage 01</p>
-            <h2 className="mt-3 text-2xl font-semibold text-slate-950">上传与模板识别</h2>
-            <p className="mt-2 text-sm leading-7 text-slate-600">
-              上传前可手动选择已有规则；未选择时由 AI 规则生成器分析文件结构，用户确认后进入预览编辑。
+            <h2 className="text-base font-semibold text-slate-950">上传与模板识别</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              上传前手动选择已有规则；未选择时由 AI 生成推荐规则，用户确认保存后才作为规则复用。
             </p>
           </div>
-          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+          <span className="rounded border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
             9 类结构规则化
           </span>
         </div>
 
-        <label className="group relative flex min-h-[23rem] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-[28px] border border-dashed border-slate-300 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(235,252,251,0.9))] p-8 text-center transition hover:border-[var(--app-accent)]">
-          <div className="absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_center,rgba(15,198,194,0.16),transparent_72%)] opacity-80" />
+        <label className="group flex min-h-44 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 p-8 text-center transition hover:border-[var(--app-accent)]">
           <div className="relative">
-            <span className="inline-flex rounded-full border border-white/70 bg-white/70 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-slate-500">
-              drag / drop
-            </span>
-            <span className="mt-5 block text-2xl font-semibold text-slate-900">拖拽或点击上传文件</span>
-            <span className="mt-3 block max-w-md text-sm leading-7 text-slate-600">
+            <span className="block text-base font-semibold text-slate-900">拖拽或点击上传文件</span>
+            <span className="mt-2 block max-w-md text-sm leading-6 text-slate-500">
               支持 `.xlsx` / `.xls` / `.docx` / `.pdf`。Excel 可执行试解析，Word/PDF 会生成待确认的解析规则入口。
             </span>
           </div>
@@ -260,21 +254,21 @@ export function ImportWorkbench() {
             className="hidden"
             onChange={onFileChange}
           />
-          <span className="relative mt-7 rounded-full bg-[linear-gradient(135deg,#075d5b,#0fc6c2)] px-6 py-3 text-sm font-medium text-white shadow-[0_18px_40px_-22px_rgba(15,198,194,0.88)] transition group-hover:-translate-y-0.5">
+          <span className="relative mt-5 rounded bg-[var(--app-accent)] px-5 py-2 text-sm font-medium text-white transition hover:bg-teal-500">
             {isLoading ? "解析中..." : "选择文件"}
           </span>
         </label>
 
-        <div className="mt-4 rounded-[24px] border border-white/60 bg-white/70 p-4">
+        <div className="mt-4 rounded border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-end gap-3">
             <label className="min-w-[260px] flex-1">
-              <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">手动选择规则</span>
+              <span className="text-sm font-medium text-slate-700">手动选择规则</span>
               <select
                 value={selectedRuleSignature}
                 onChange={(event) => setSelectedRuleSignature(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-[var(--app-accent)]"
+                className="mt-2 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[var(--app-accent)]"
               >
-                <option value="">不选择，上传后由 AI 生成推荐规则</option>
+                <option value="">不选择已有规则，上传后新建 AI 推荐规则</option>
                 {ruleRecords.map((record) => (
                   <option key={record.templateSignature} value={record.templateSignature}>
                     {record.templateName || record.rule?.name || record.templateSignature}
@@ -284,7 +278,7 @@ export function ImportWorkbench() {
             </label>
             <Link
               href="/rules"
-              className="rounded-full border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-white"
+              className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               管理规则
             </Link>
@@ -292,19 +286,19 @@ export function ImportWorkbench() {
         </div>
 
         {error ? (
-          <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <p className="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
           </p>
         ) : null}
 
-        <div className="mt-4 rounded-[24px] border border-white/60 bg-white/70 p-4">
+        <div className="mt-4 rounded border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm font-medium text-slate-800">{progress.message}</p>
             <p className="text-xs text-slate-500">{progress.percent}%</p>
           </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+          <div className="mt-3 h-2 overflow-hidden rounded bg-slate-200">
             <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#075d5b,#0fc6c2)] transition-all duration-500"
+              className="h-full rounded bg-[var(--app-accent)] transition-all duration-500"
               style={{ width: `${progress.percent}%` }}
             />
           </div>
@@ -316,68 +310,78 @@ export function ImportWorkbench() {
         </div>
       </section>
 
-      <section className="panel-strong rounded-[32px] p-6 text-slate-100 lg:p-7">
-        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Stage 02</p>
-        <h2 className="mt-3 text-2xl font-semibold">规则与解析摘要</h2>
+      <section className="panel rounded p-5">
+        <h2 className="text-base font-semibold text-slate-950">规则与解析摘要</h2>
         {!result ? (
-          <div className="mt-6 space-y-4 text-sm text-slate-300">
+          <div className="mt-4 text-sm text-slate-600">
             <p>上传后会在这里显示：</p>
-            <div className="grid gap-3">
+            <div className="mt-3 grid divide-y divide-slate-100 rounded border border-slate-200">
               {["AI 推荐解析规则", "字段映射与推测项", "试解析结果和错误行", "确认后保存规则"].map((text, index) => (
-                <div key={text} className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-3">
-                  <span className="mr-3 text-cyan-200">0{index + 1}</span>
+                <div key={text} className="px-4 py-3">
+                  <span className="mr-3 text-slate-400">0{index + 1}</span>
                   {text}
                 </div>
               ))}
             </div>
           </div>
         ) : (
-          <div className="mt-6 space-y-4 text-sm">
-            <div className="grid gap-3 rounded-[24px] border border-white/10 bg-white/5 p-4">
-              <p>文件：{result.fileName}</p>
-              <p>Sheet：{result.sheetName}</p>
-              <p>模板签名：{result.template.signature || "无"}</p>
-              <p>解析行数：{result.totals.parsedRows}</p>
-              <p>错误行数：{result.totals.errorRows}</p>
-              <p>映射字段数：{Object.keys(result.template.mapping).length}</p>
-              <p>解析分块：{result.performance.totalChunks} 块 / 每块 {result.performance.chunkSize} 行</p>
-              <p>预览建议：每页 {result.performance.recommendedPageSize} 行</p>
-              <p>映射来源：{result.template.matchedBy}</p>
-              {generatedBy ? <p>规则生成：{generatedBy}</p> : null}
+          <div className="mt-4 space-y-4 text-sm">
+            <div className="overflow-hidden rounded border border-slate-200">
+              <table className="min-w-full divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-100">
+                  {[
+                    ["文件", result.fileName],
+                    ["Sheet", result.sheetName],
+                    ["模板签名", result.template.signature || "无"],
+                    ["解析行数", String(result.totals.parsedRows)],
+                    ["错误行数", String(result.totals.errorRows)],
+                    ["映射字段数", String(Object.keys(result.template.mapping).length)],
+                    ["解析分块", `${result.performance.totalChunks} 块 / 每块 ${result.performance.chunkSize} 行`],
+                    ["预览建议", `每页 ${result.performance.recommendedPageSize} 行`],
+                    ["映射来源", result.template.matchedBy],
+                    ...(generatedBy ? [["规则生成", generatedBy]] : []),
+                  ].map(([label, value]) => (
+                    <tr key={label}>
+                      <td className="w-36 bg-slate-50 px-4 py-3 font-medium text-slate-700">{label}</td>
+                      <td className="px-4 py-3 text-slate-600">{value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
             {result.template.rule ? (
-              <div className="rounded-[24px] border border-cyan-300/20 bg-cyan-300/10 p-4">
-                <p className="font-medium text-cyan-50">{result.template.rule.name}</p>
-                <p className="mt-2 text-xs leading-6 text-cyan-50/80">{result.template.rule.description}</p>
+              <div className="rounded border border-slate-200 bg-white p-4">
+                <p className="font-medium text-slate-950">{result.template.rule.name}</p>
+                <p className="mt-2 text-xs leading-6 text-slate-500">{result.template.rule.description}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {result.template.rule.operations.map((operation) => (
-                    <span key={operation} className="rounded-full border border-cyan-200/20 px-3 py-1 text-xs text-cyan-50">
+                    <span key={operation} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
                       {operation}
                     </span>
                   ))}
                 </div>
                 <div className="mt-4 grid gap-2">
                   {result.template.rule.assumptions.map((assumption) => (
-                    <p key={assumption} className="text-xs leading-5 text-cyan-50/75">
+                    <p key={assumption} className="text-xs leading-5 text-slate-500">
                       {assumption}
                     </p>
                   ))}
                 </div>
               </div>
             ) : null}
-            <div className="rounded-[24px] border border-white/10 p-4">
-              <p className="mb-2 font-medium text-white">已识别字段</p>
-              <pre className="overflow-x-auto text-xs leading-6 text-slate-300">
+            <div className="rounded border border-slate-200 p-4">
+              <p className="mb-2 font-medium text-slate-950">已识别字段</p>
+              <pre className="overflow-x-auto text-xs leading-6 text-slate-600">
                 {JSON.stringify(result.template.mapping, null, 2)}
               </pre>
             </div>
             {missingRequiredFields.length ? (
-              <div className="rounded-[24px] border border-cyan-300/25 bg-cyan-400/10 p-4">
-                <p className="mb-3 font-medium text-cyan-100">手动映射缺失字段</p>
+              <div className="rounded border border-amber-200 bg-amber-50 p-4">
+                <p className="mb-3 font-medium text-amber-800">手动映射缺失字段</p>
                 <div className="grid gap-3">
                   {missingRequiredFields.map((field) => (
                     <label key={field} className="grid gap-2">
-                      <span className="text-xs uppercase tracking-[0.18em] text-cyan-100/80">{fieldLabels[field]}</span>
+                      <span className="text-xs text-amber-800">{fieldLabels[field]}</span>
                       <select
                         value={manualMapping[field] || ""}
                         onChange={(event) =>
@@ -386,13 +390,13 @@ export function ImportWorkbench() {
                             [field]: event.target.value || undefined,
                           }))
                         }
-                        className="rounded-2xl border border-white/15 bg-white/10 px-3 py-3 text-sm text-white outline-none"
+                        className="rounded border border-amber-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
                       >
                         <option value="">请选择 Excel 列</option>
                         {result.headers
                           .filter(Boolean)
                           .map((header) => (
-                            <option key={header} value={header} className="text-slate-900">
+                            <option key={header} value={header}>
                               {header}
                             </option>
                           ))}
@@ -408,18 +412,21 @@ export function ImportWorkbench() {
                       const nextTemplate = {
                         ...result.template,
                         mapping: manualMapping,
+                        rule: result.template.rule
+                          ? {
+                              ...result.template.rule,
+                              fieldMapping: manualMapping,
+                            }
+                          : undefined,
                         matchedBy: "manual" as const,
-                        missingFields: shipmentFields.filter(
-                          (field) =>
-                            field !== "externalCode" && field !== "remark" && field !== "spec" && !manualMapping[field],
-                        ),
+                        missingFields: getMissingRequiredFields(manualMapping),
                       };
                       const nextPayload = rebuildParsedPayload(result, nextTemplate);
                       setResult(nextPayload);
                       saveImportSession(nextPayload);
-                      await persistManualMapping();
+                      await persistManualMapping(nextPayload, manualMapping);
                     }}
-                    className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     保存映射并应用
                   </button>
@@ -429,14 +436,33 @@ export function ImportWorkbench() {
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
+                disabled={!result.template.rule}
+                onClick={async () => {
+                  await persistManualMapping(result, manualMapping);
+                  setRuleRecords(loadRuleRecords());
+                  setSelectedRuleSignature(result.template.signature);
+                  setProgress({
+                    phase: "ready",
+                    percent: 100,
+                    message: "解析规则已确认保存，可在下次导入时复用",
+                    current: result.totals.parsedRows,
+                    total: result.totals.parsedRows,
+                  });
+                }}
+                className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                确认并保存规则
+              </button>
+              <button
+                type="button"
                 onClick={() => router.push("/preview")}
-                className="rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-100"
+                className="rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-500"
               >
                 进入预览编辑
               </button>
               <Link
                 href="/preview"
-                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-white/5"
+                className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 打开预览页
               </Link>

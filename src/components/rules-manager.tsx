@@ -58,12 +58,41 @@ function createEmptyRuleRecord(): TemplateMappingRecord {
 export function RulesManager() {
   const [records, setRecords] = useState<TemplateMappingRecord[]>([]);
   const [selectedSignature, setSelectedSignature] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const selectedRecord = records.find((record) => record.templateSignature === selectedSignature) || records[0];
 
   useEffect(() => {
-    const storedRecords = loadRuleRecords();
-    setRecords(storedRecords);
-    setSelectedSignature(storedRecords[0]?.templateSignature || "");
+    let active = true;
+
+    async function fetchRecords() {
+      const storedRecords = loadRuleRecords();
+      setRecords(storedRecords);
+      setSelectedSignature(storedRecords[0]?.templateSignature || "");
+
+      try {
+        const response = await fetch("/api/template-mappings", { cache: "no-store" });
+        const data = (await response.json()) as { items?: TemplateMappingRecord[]; error?: string };
+        if (!response.ok) {
+          throw new Error(data.error || "规则库加载失败");
+        }
+        if (!active || !data.items) return;
+
+        setRecords(data.items);
+        saveRuleRecords(data.items);
+        setSelectedSignature(data.items[0]?.templateSignature || "");
+      } catch (requestError) {
+        if (active) {
+          setError(requestError instanceof Error ? requestError.message : "规则库加载失败，已使用本地缓存");
+        }
+      }
+    }
+
+    void fetchRecords();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   function persist(nextRecords: TemplateMappingRecord[]) {
@@ -103,13 +132,57 @@ export function RulesManager() {
     });
   }
 
+  async function saveRecord(record: TemplateMappingRecord) {
+    setMessage("");
+    setError("");
+    const savedRecord = upsertRuleRecord(record);
+    persist(records.some((item) => item.templateSignature === savedRecord.templateSignature)
+      ? records.map((item) => (item.templateSignature === savedRecord.templateSignature ? savedRecord : item))
+      : [savedRecord, ...records]);
+
+    try {
+      const response = await fetch("/api/template-mappings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(savedRecord),
+      });
+      const data = (await response.json()) as { saved?: boolean; error?: string; reason?: string };
+      if (!response.ok) {
+        throw new Error(data.error || "保存规则失败");
+      }
+      setMessage(data.saved ? "规则已保存到服务器端规则库" : data.reason || "规则已保存到本地缓存");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "保存规则失败，已保留本地缓存");
+    }
+  }
+
+  async function removeRecord(record: TemplateMappingRecord) {
+    setMessage("");
+    setError("");
+    deleteRuleRecord(record.templateSignature);
+    const nextRecords = records.filter((item) => item.templateSignature !== record.templateSignature);
+    persist(nextRecords);
+    setSelectedSignature(nextRecords[0]?.templateSignature || "");
+
+    try {
+      await fetch(`/api/template-mappings?templateSignature=${encodeURIComponent(record.templateSignature)}`, {
+        method: "DELETE",
+      });
+      setMessage("规则已删除");
+    } catch {
+      setMessage("规则已从本地删除，服务器端删除失败时可稍后重试");
+    }
+  }
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-      <section className="panel rounded-[32px] p-6">
+    <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+      <section className="panel rounded p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="eyebrow">Rule Library</p>
-            <h2 className="mt-3 text-2xl font-semibold text-slate-950">解析规则库</h2>
+            <h2 className="text-base font-semibold text-slate-950">解析规则库</h2>
+            <p className="mt-2 text-sm text-slate-500">选择一条规则后在右侧编辑。</p>
           </div>
           <button
             type="button"
@@ -119,43 +192,69 @@ export function RulesManager() {
               setRecords(nextRecords);
               setSelectedSignature(record.templateSignature);
             }}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white"
+            className="inline-flex items-center gap-2 rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
           >
             <Plus className="h-4 w-4" />
             新建规则
           </button>
         </div>
 
-        <div className="mt-5 grid gap-3">
+        {message ? (
+          <p className="mt-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {message}
+          </p>
+        ) : null}
+        {error ? (
+          <p className="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="mt-5 overflow-hidden rounded border border-slate-200">
           {records.length ? (
-            records.map((record) => (
-              <button
-                key={record.templateSignature}
-                type="button"
-                onClick={() => setSelectedSignature(record.templateSignature)}
-                className={`rounded-[22px] border px-4 py-3 text-left transition ${
-                  selectedRecord?.templateSignature === record.templateSignature
-                    ? "border-[var(--app-accent)] bg-cyan-50"
-                    : "border-slate-200 bg-white/70 hover:bg-white"
-                }`}
-              >
-                <p className="font-medium text-slate-950">{record.templateName || record.rule?.name || "未命名规则"}</p>
-                <p className="mt-1 text-xs text-slate-500">{record.templateSignature}</p>
-              </button>
-            ))
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-100 text-left text-slate-900">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">规则名称</th>
+                  <th className="px-4 py-3 font-semibold">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {records.map((record) => (
+                  <tr
+                    key={record.templateSignature}
+                    className={selectedRecord?.templateSignature === record.templateSignature ? "bg-cyan-50" : undefined}
+                  >
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-950">{record.templateName || record.rule?.name || "未命名规则"}</p>
+                      <p className="mt-1 max-w-[18rem] truncate text-xs text-slate-500">{record.templateSignature}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSignature(record.templateSignature)}
+                        className="font-medium text-blue-600 hover:text-blue-700"
+                      >
+                        编辑
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : (
-            <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/60 p-6 text-sm text-slate-500">
+            <div className="p-6 text-sm text-slate-500">
               暂无规则。可以新建规则，或在导入页由 AI 生成规则后保存。
             </div>
           )}
         </div>
       </section>
 
-      <section className="panel rounded-[32px] p-6">
+      <section className="panel rounded p-5">
         {selectedRecord ? (
           <div className="grid gap-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-2xl font-semibold text-slate-950">规则编辑</h2>
+              <h2 className="text-base font-semibold text-slate-950">规则编辑</h2>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -171,20 +270,15 @@ export function RulesManager() {
                     persist([cloned, ...records]);
                     setSelectedSignature(cloned.templateSignature);
                   }}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-700"
+                  className="inline-flex items-center gap-2 rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
                 >
                   <Copy className="h-4 w-4" />
                   复制
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    deleteRuleRecord(selectedRecord.templateSignature);
-                    const nextRecords = records.filter((record) => record.templateSignature !== selectedRecord.templateSignature);
-                    setRecords(nextRecords);
-                    setSelectedSignature(nextRecords[0]?.templateSignature || "");
-                  }}
-                  className="inline-flex items-center gap-2 rounded-full border border-rose-200 px-4 py-2 text-sm text-rose-700"
+                  onClick={() => void removeRecord(selectedRecord)}
+                  className="inline-flex items-center gap-2 rounded border border-rose-200 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50"
                 >
                   <Trash2 className="h-4 w-4" />
                   删除
@@ -202,7 +296,7 @@ export function RulesManager() {
                     rule: selectedRecord.rule ? { ...selectedRecord.rule, name: event.target.value } : undefined,
                   })
                 }
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[var(--app-accent)]"
+                className="rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)]"
               />
             </label>
 
@@ -215,7 +309,7 @@ export function RulesManager() {
                     rule: selectedRecord.rule ? { ...selectedRecord.rule, description: event.target.value } : undefined,
                   })
                 }
-                className="min-h-24 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[var(--app-accent)]"
+                className="min-h-24 rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)]"
               />
             </label>
 
@@ -241,7 +335,7 @@ export function RulesManager() {
                             : undefined,
                         });
                       }}
-                      className={`rounded-full border px-3 py-1.5 text-xs ${
+                      className={`rounded border px-3 py-1.5 text-xs ${
                         checked ? "border-cyan-300 bg-cyan-50 text-cyan-800" : "border-slate-200 bg-white text-slate-500"
                       }`}
                     >
@@ -262,7 +356,7 @@ export function RulesManager() {
                       value={selectedRecord.mapping[field] || ""}
                       onChange={(event) => updateMapping(field, event.target.value)}
                       placeholder="源文件列名 / 文本键名"
-                      className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)]"
+                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)]"
                     />
                   </label>
                 ))}
@@ -271,15 +365,15 @@ export function RulesManager() {
 
             <button
               type="button"
-              onClick={() => upsertRuleRecord(selectedRecord)}
-              className="inline-flex w-fit items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-medium text-white"
+              onClick={() => void saveRecord(selectedRecord)}
+              className="inline-flex w-fit items-center gap-2 rounded bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
               <Save className="h-4 w-4" />
               保存规则
             </button>
           </div>
         ) : (
-          <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/60 p-8 text-sm text-slate-500">
+          <div className="rounded border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500">
             选择或新建一条规则后编辑。
           </div>
         )}

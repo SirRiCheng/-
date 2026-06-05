@@ -8,10 +8,12 @@
 - 多格式上传入口：支持 `.xlsx`、`.xls`、`.docx`、`.pdf`；Excel 可执行试解析，Word/PDF 进入规则生成确认流程。
 - 规则引擎：字段映射、跳过头部、尾部信息提取、跨行聚合、矩阵转置、多 Sheet 合并、卡片拆分、纯文本提取、PDF 多单拆分等操作用规则描述。
 - AI 辅助生成规则：`POST /api/rules/ai-generate` 根据文件名、表头和样例行生成推荐规则；未配置模型时使用本地启发式兜底。
+- 规则库持久化：解析规则支持服务器端保存、编辑、复制、删除；导入时由用户手动选择已有规则，未选择时新建 AI 推荐规则。
 - 题面字段模型：外部编码、收货门店、收件人姓名/电话/地址、SKU 物品编码/名称/数量/规格、备注。
 - 校验规则：A组收货门店或 B组收件人信息二选一；SKU 编码、名称、数量必填；手机号格式；同外部编码 + 同 SKU 重复检测。
 - 类 Excel 预览编辑：分页渲染 1000+ 行、固定表头、横向滚动、单元格编辑、Tab/Enter 跳转、新增/删除行、导出 Excel。
 - 提交与历史列表：批量提交、进度条、数据库写入、历史运单搜索、分页和详情页。
+- 钉钉预警：批量提交完成、失败、重复拦截、数据库未配置等节点可通过机器人 Webhook 发送预警。
 
 ## 环境变量
 
@@ -27,6 +29,9 @@ TIDB_DATABASE=universal_excel_importer
 LLM_API_KEY=
 LLM_API_URL=https://www.vbcode.io/v1
 LLM_MODEL=deepseek-chat
+
+DINGTALK_WEBHOOK_URL=
+DINGTALK_SECRET=
 ```
 
 `LLM_API_URL` 可填 OpenAI 兼容的 `/v1` 基础地址，系统会自动请求 `/chat/completions`。
@@ -50,7 +55,10 @@ npm run build
 - `POST /api/import/parse`
 - `POST /api/rules/ai-generate`
 - `POST /api/template-mappings`
+- `GET /api/template-mappings`
+- `DELETE /api/template-mappings`
 - `GET /api/template-mappings/match`
 - `GET /api/shipments`
 - `GET /api/shipments/:id`
 - `POST /api/shipments/batch`
+- `POST /api/alerts/dingtalk`

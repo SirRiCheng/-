@@ -1,11 +1,23 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
+import { sendDingTalkNotification } from "@/lib/dingtalk";
 import { ShipmentRow, SubmitBatchResult } from "@/lib/types";
 import { detectDuplicateExternalCodes, validateShipmentRow } from "@/lib/validators/shipment";
 
 export const runtime = "nodejs";
 
 const INSERT_CHUNK_SIZE = 100;
+
+async function notifyImportResult(title: string, lines: string[]) {
+  try {
+    await sendDingTalkNotification({
+      title,
+      text: lines.join("\n\n"),
+    });
+  } catch {
+    // 预警通道不能影响导入主流程；失败时由接口返回和日志排查。
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -20,10 +32,21 @@ export async function POST(request: Request) {
 
     const issues = [...rows.flatMap(validateShipmentRow), ...detectDuplicateExternalCodes(rows)];
     if (issues.length) {
+      await notifyImportResult("批量下单校验失败", [
+        `- 文件：${fileName}`,
+        `- 模板：${templateSignature}`,
+        `- 错误数：${issues.length}`,
+      ]);
       return NextResponse.json({ error: "存在错误行，禁止提交。", issues }, { status: 400 });
     }
 
     if (!isDatabaseConfigured()) {
+      await notifyImportResult("批量下单未写入数据库", [
+        `- 文件：${fileName}`,
+        `- 模板：${templateSignature}`,
+        `- 行数：${rows.length}`,
+        "- 原因：数据库未配置",
+      ]);
       return NextResponse.json({
         saved: false,
         reason: "数据库未配置，当前仅完成本地开发骨架。",
@@ -62,6 +85,11 @@ export async function POST(request: Request) {
         }));
 
       if (duplicateRows.length) {
+        await notifyImportResult("批量下单重复拦截", [
+          `- 文件：${fileName}`,
+          `- 模板：${templateSignature}`,
+          `- 重复行数：${duplicateRows.length}`,
+        ]);
         return NextResponse.json(
           {
             error: "存在与数据库重复的外部编码和SKU，禁止提交。",
@@ -183,6 +211,15 @@ export async function POST(request: Request) {
           processedChunks,
         },
       };
+
+      await notifyImportResult(failedRows.length ? "批量下单部分失败" : "批量下单完成", [
+        `- 文件：${fileName}`,
+        `- 模板：${templateSignature}`,
+        `- 任务ID：${importJobId}`,
+        `- 成功：${successRows}`,
+        `- 失败：${failedRows.length}`,
+        `- 分批：${processedChunks}/${totalChunks}`,
+      ]);
 
       return NextResponse.json(result);
     } catch (error) {
