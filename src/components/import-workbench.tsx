@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { rebuildParsedPayload } from "@/lib/excel/standardize";
-import { loadManualMapping, saveImportSession, saveManualMapping } from "@/lib/import-session";
+import { loadManualMapping, loadRuleRecords, saveImportSession, saveManualMapping } from "@/lib/import-session";
 import {
   shipmentFields,
   type FieldMapping,
@@ -34,11 +34,19 @@ export function ImportWorkbench() {
   const [isLoading, setIsLoading] = useState(false);
   const [manualMapping, setManualMapping] = useState<FieldMapping>({});
   const [generatedBy, setGeneratedBy] = useState("");
+  const [ruleRecords, setRuleRecords] = useState<TemplateMappingRecord[]>([]);
+  const [selectedRuleSignature, setSelectedRuleSignature] = useState("");
   const [progress, setProgress] = useState<ImportProgressState>({
     phase: "idle",
     percent: 0,
     message: "等待上传",
   });
+
+  useEffect(() => {
+    const records = loadRuleRecords();
+    setRuleRecords(records);
+    setSelectedRuleSignature(records[0]?.templateSignature || "");
+  }, []);
 
   async function tryMatchSavedTemplate(payload: ParsedImportPayload) {
     try {
@@ -147,7 +155,25 @@ export function ImportWorkbench() {
       });
 
       let payload = (await tryMatchSavedTemplate(data as ParsedImportPayload)) as ParsedImportPayload;
-      const ruleResponse = await fetch("/api/rules/ai-generate", {
+      const selectedRule = ruleRecords.find((record) => record.templateSignature === selectedRuleSignature);
+
+      if (selectedRule?.mapping) {
+        payload = rebuildParsedPayload(payload, {
+          ...payload.template,
+          mapping: selectedRule.mapping,
+          rule: selectedRule.rule,
+          matchedBy: "manual",
+          confidence: selectedRule.rule?.confidence || payload.template.confidence,
+          missingFields: shipmentFields.filter(
+            (field) => field !== "externalCode" && field !== "remark" && field !== "spec" && !selectedRule.mapping[field],
+          ),
+        });
+        setGeneratedBy("selected-rule");
+      }
+
+      const ruleResponse = selectedRule
+        ? null
+        : await fetch("/api/rules/ai-generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -159,7 +185,7 @@ export function ImportWorkbench() {
           sampleRows: payload.sourceRows.slice(0, 5),
         }),
       });
-      if (ruleResponse.ok) {
+      if (ruleResponse?.ok) {
         const ruleData = (await ruleResponse.json()) as { rule?: ParseRule; generatedBy?: string };
         if (ruleData.rule) {
           payload = {
@@ -209,7 +235,7 @@ export function ImportWorkbench() {
             <p className="eyebrow">Stage 01</p>
             <h2 className="mt-3 text-2xl font-semibold text-slate-950">上传与模板识别</h2>
             <p className="mt-2 text-sm leading-7 text-slate-600">
-              上传后先由规则引擎和 AI 规则生成器分析文件结构，用户确认规则后再进入预览编辑。
+              上传前可手动选择已有规则；未选择时由 AI 规则生成器分析文件结构，用户确认后进入预览编辑。
             </p>
           </div>
           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
@@ -238,6 +264,32 @@ export function ImportWorkbench() {
             {isLoading ? "解析中..." : "选择文件"}
           </span>
         </label>
+
+        <div className="mt-4 rounded-[24px] border border-white/60 bg-white/70 p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-[260px] flex-1">
+              <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">手动选择规则</span>
+              <select
+                value={selectedRuleSignature}
+                onChange={(event) => setSelectedRuleSignature(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none focus:border-[var(--app-accent)]"
+              >
+                <option value="">不选择，上传后由 AI 生成推荐规则</option>
+                {ruleRecords.map((record) => (
+                  <option key={record.templateSignature} value={record.templateSignature}>
+                    {record.templateName || record.rule?.name || record.templateSignature}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Link
+              href="/rules"
+              className="rounded-full border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-white"
+            >
+              管理规则
+            </Link>
+          </div>
+        </div>
 
         {error ? (
           <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

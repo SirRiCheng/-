@@ -38,6 +38,40 @@ export async function POST(request: Request) {
 
     await ensureSchema();
     const pool = getPool();
+    const externalCodes = Array.from(new Set(rows.map((row) => row.externalCode).filter(Boolean)));
+
+    if (externalCodes.length) {
+      const [existingRows] = await pool.query(
+        `
+          SELECT external_code AS externalCode, sku_code AS skuCode
+          FROM shipments
+          WHERE external_code IN (:externalCodes)
+        `,
+        { externalCodes },
+      );
+      const existingPairs = new Set(
+        (existingRows as Array<{ externalCode: string; skuCode: string }>).map(
+          (row) => `${row.externalCode}::${row.skuCode}`,
+        ),
+      );
+      const duplicateRows = rows
+        .filter((row) => row.externalCode && existingPairs.has(`${row.externalCode}::${row.skuCode}`))
+        .map((row) => ({
+          rowNumber: row.rowNumber,
+          reason: `数据库已存在相同外部编码和SKU：${row.externalCode} / ${row.skuCode}`,
+        }));
+
+      if (duplicateRows.length) {
+        return NextResponse.json(
+          {
+            error: "存在与数据库重复的外部编码和SKU，禁止提交。",
+            failedRows: duplicateRows,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
     const connection = await pool.getConnection();
 
     try {

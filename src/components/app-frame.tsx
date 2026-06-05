@@ -1,10 +1,11 @@
 import Link from "next/link";
 import type { Route } from "next";
-import { Database, FileSpreadsheet, Rows3, Warehouse } from "lucide-react";
+import { Database, FileSpreadsheet, Rows3, Settings2, Warehouse } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "总览", icon: Warehouse },
   { href: "/import", label: "导入工作台", icon: FileSpreadsheet },
+  { href: "/rules", label: "规则管理", icon: Settings2 },
   { href: "/preview", label: "预览编辑", icon: Rows3 },
   { href: "/orders", label: "已导入运单", icon: Database },
 ] as const satisfies ReadonlyArray<{
