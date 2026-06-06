@@ -2,7 +2,7 @@ import { OrdersTable } from "@/components/orders-table";
 
 export default function OrdersPage() {
   return (
-    <main className="mx-auto w-full max-w-7xl px-5 py-6 lg:px-8">
+    <main className="w-full px-5 py-5 lg:px-6">
       <section className="page-hero rounded p-5">
         <div>
           <h1 className="text-xl font-semibold text-slate-950">已导入运单列表</h1>

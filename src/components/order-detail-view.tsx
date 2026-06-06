@@ -17,7 +17,7 @@ export function OrderDetailView({ detail }: { detail: ShipmentDetailResponse }) 
   ];
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 py-6 lg:px-8">
+    <main className="flex w-full flex-1 flex-col gap-5 px-5 py-5 lg:px-6">
       <Card className="page-hero">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
