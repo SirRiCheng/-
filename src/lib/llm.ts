@@ -35,6 +35,24 @@ export function extractJsonObject(content: string) {
   return normalized.slice(start, end + 1);
 }
 
+function extractContentFromSse(text: string) {
+  return text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.replace(/^data:\s*/, ""))
+    .filter((line) => line && line !== "[DONE]")
+    .map((line) => {
+      try {
+        const data = JSON.parse(line);
+        return data?.choices?.[0]?.delta?.content || data?.choices?.[0]?.message?.content || "";
+      } catch {
+        return "";
+      }
+    })
+    .join("");
+}
+
 export async function callConfiguredLlmJson<T>(messages: ChatMessage[], fallbackError: string): Promise<T> {
   const config = getConfiguredLlm();
 
@@ -42,6 +60,8 @@ export async function callConfiguredLlmJson<T>(messages: ChatMessage[], fallback
     throw new Error("未配置 LLM_API_KEY/LLM_API_URL，无法调用大模型结构化抽取。");
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 18000);
   const response = await fetch(config.chatCompletionsUrl, {
     method: "POST",
     headers: {
@@ -52,16 +72,24 @@ export async function callConfiguredLlmJson<T>(messages: ChatMessage[], fallback
       model: config.model,
       messages,
       temperature: 0,
-      response_format: { type: "json_object" },
     }),
-  });
+    signal: controller.signal,
+  }).finally(() => clearTimeout(timeout));
 
   if (!response.ok) {
     throw new Error(`${fallbackError}：${await response.text()}`);
   }
 
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
+  const text = await response.text();
+  let content = "";
+
+  try {
+    const data = JSON.parse(text);
+    content = data?.choices?.[0]?.message?.content || "";
+  } catch {
+    content = extractContentFromSse(text);
+  }
+
   if (!content || typeof content !== "string") {
     throw new Error(fallbackError);
   }

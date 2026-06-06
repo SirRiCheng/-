@@ -47,9 +47,9 @@ const schemaQueries = [
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       external_code VARCHAR(255) NULL,
       store_name VARCHAR(255) NOT NULL DEFAULT '',
-      receiver_name VARCHAR(255) NOT NULL,
-      receiver_phone VARCHAR(32) NOT NULL,
-      receiver_address TEXT NOT NULL,
+      receiver_name VARCHAR(255) NOT NULL DEFAULT '',
+      receiver_phone VARCHAR(32) NOT NULL DEFAULT '',
+      receiver_address TEXT NULL,
       sku_code VARCHAR(255) NOT NULL,
       sku_name VARCHAR(255) NOT NULL,
       quantity DECIMAL(12, 2) NOT NULL DEFAULT 0,
@@ -73,11 +73,14 @@ function hasValue(input?: string) {
 }
 
 export function getConnectionOptions() {
-  const isTiDB = hasValue(process.env.TIDB_HOST);
-  const user = process.env.TIDB_USER || process.env.MYSQL_USER || "root";
-  const password = process.env.TIDB_PASSWORD || process.env.MYSQL_PASSWORD || "";
-  const database =
-    process.env.TIDB_DATABASE || process.env.MYSQL_DATABASE || "universal_excel_importer";
+  const provider = (process.env.DATABASE_PROVIDER || "").toLowerCase();
+  const useMysql = provider === "mysql" || (!provider && (hasValue(process.env.MYSQL_HOST) || hasValue(process.env.MYSQL_SOCKET)));
+  const isTiDB = provider === "tidb" || (!useMysql && hasValue(process.env.TIDB_HOST));
+  const user = useMysql ? process.env.MYSQL_USER || "root" : process.env.TIDB_USER || "root";
+  const password = useMysql ? process.env.MYSQL_PASSWORD || "" : process.env.TIDB_PASSWORD || "";
+  const database = useMysql
+    ? process.env.MYSQL_DATABASE || "universal_excel_importer"
+    : process.env.TIDB_DATABASE || "universal_excel_importer";
 
   const options: mysql.PoolOptions = {
     user,
@@ -118,6 +121,20 @@ export function assertDatabaseConfigured() {
   if (!isDatabaseConfigured()) {
     throw new Error("数据库未配置，请在 .env.local 配置 TIDB_HOST 或 MYSQL_HOST/MYSQL_SOCKET。");
   }
+}
+
+export function getPublicDatabaseError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (/access denied/i.test(message)) {
+    return "数据库账号或密码无效，请检查环境变量配置。";
+  }
+
+  if (/connect|ECONN|ENOTFOUND|ETIMEDOUT|timeout/i.test(message)) {
+    return "数据库连接失败，请检查数据库地址、端口和网络访问白名单。";
+  }
+
+  return message || fallback;
 }
 
 let pool: mysql.Pool | null = null;
@@ -192,6 +209,15 @@ async function migrateExistingSchema(activePool: mysql.Pool) {
   await addColumnIfMissing(activePool, "shipments", "sku_name", "sku_name VARCHAR(255) NOT NULL DEFAULT ''");
   await addColumnIfMissing(activePool, "shipments", "quantity", "quantity DECIMAL(12, 2) NOT NULL DEFAULT 0");
   await addColumnIfMissing(activePool, "shipments", "spec", "spec VARCHAR(255) NULL");
+  if (await hasColumn(activePool, "shipments", "receiver_name")) {
+    await activePool.query("ALTER TABLE shipments ALTER COLUMN receiver_name SET DEFAULT ''");
+  }
+  if (await hasColumn(activePool, "shipments", "receiver_phone")) {
+    await activePool.query("ALTER TABLE shipments ALTER COLUMN receiver_phone SET DEFAULT ''");
+  }
+  if (await hasColumn(activePool, "shipments", "receiver_address")) {
+    await activePool.query("ALTER TABLE shipments MODIFY COLUMN receiver_address TEXT NULL");
+  }
 
   // 兼容旧版 V1 表：旧必填列不再写入，但需要默认值避免 INSERT 失败。
   for (const columnName of ["sender_name", "sender_phone", "temperature"]) {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool, getPublicDatabaseError } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -47,7 +47,7 @@ export async function GET(
     return NextResponse.json(record);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "查询详情失败。" },
+      { error: getPublicDatabaseError(error, "查询详情失败。") },
       { status: 500 },
     );
   }

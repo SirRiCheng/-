@@ -15,6 +15,10 @@ export function OrdersTable() {
   const [items, setItems] = useState<ShipmentRecord[]>([]);
   const [keyword, setKeyword] = useState("");
   const [submittedKeyword, setSubmittedKeyword] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [submittedDateFrom, setSubmittedDateFrom] = useState("");
+  const [submittedDateTo, setSubmittedDateTo] = useState("");
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
@@ -30,7 +34,7 @@ export function OrdersTable() {
 
       try {
         const response = await fetch(
-          `/api/shipments?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(submittedKeyword)}`,
+          `/api/shipments?page=${page}&pageSize=${pageSize}&keyword=${encodeURIComponent(submittedKeyword)}&dateFrom=${encodeURIComponent(submittedDateFrom)}&dateTo=${encodeURIComponent(submittedDateTo)}`,
           { cache: "no-store" },
         );
         const data = (await response.json()) as ShipmentsResponse | { error?: string };
@@ -60,7 +64,7 @@ export function OrdersTable() {
     return () => {
       active = false;
     };
-  }, [page, pageSize, submittedKeyword]);
+  }, [page, pageSize, submittedDateFrom, submittedDateTo, submittedKeyword]);
 
   const pageCount = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total]);
 
@@ -85,6 +89,8 @@ export function OrdersTable() {
             event.preventDefault();
             setPage(1);
             setSubmittedKeyword(keyword.trim());
+            setSubmittedDateFrom(dateFrom);
+            setSubmittedDateTo(dateTo);
           }}
         >
           <label className="min-w-[260px] flex-1">
@@ -95,6 +101,24 @@ export function OrdersTable() {
             placeholder="输入外部编码 / 门店 / 收件人 / SKU"
             className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[var(--app-accent)]"
           />
+          </label>
+          <label>
+            <span className="mb-2 block text-sm font-medium text-slate-700">提交开始日期</span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[var(--app-accent)]"
+            />
+          </label>
+          <label>
+            <span className="mb-2 block text-sm font-medium text-slate-700">提交结束日期</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[var(--app-accent)]"
+            />
           </label>
           <button
             type="submit"

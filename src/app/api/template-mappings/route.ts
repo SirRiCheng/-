@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool, getPublicDatabaseError } from "@/lib/db";
 import { TemplateMappingRecord } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -71,7 +71,7 @@ export async function GET() {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "查询模板映射失败。" },
+      { error: getPublicDatabaseError(error, "查询模板映射失败。") },
       { status: 500 },
     );
   }
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ saved: true, templateSignature });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "保存模板映射失败。" },
+      { error: getPublicDatabaseError(error, "保存模板映射失败。") },
       { status: 500 },
     );
   }
@@ -144,7 +144,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ deleted: true, templateSignatures });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "删除模板映射失败。" },
+      { error: getPublicDatabaseError(error, "删除模板映射失败。") },
       { status: 500 },
     );
   }

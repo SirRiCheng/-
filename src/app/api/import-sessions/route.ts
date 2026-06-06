@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool, getPublicDatabaseError } from "@/lib/db";
 import { ParsedImportPayload } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
     return NextResponse.json(toImportSession(record));
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "解析会话查询失败。" },
+      { error: getPublicDatabaseError(error, "解析会话查询失败。") },
       { status: 500 },
     );
   }
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ saved: true, id: Number((result as { insertId: number }).insertId) });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "解析会话保存失败。" },
+      { error: getPublicDatabaseError(error, "解析会话保存失败。") },
       { status: 500 },
     );
   }
@@ -135,7 +135,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ saved: true, id: body.id });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "解析会话更新失败。" },
+      { error: getPublicDatabaseError(error, "解析会话更新失败。") },
       { status: 500 },
     );
   }

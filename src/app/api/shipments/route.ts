@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool, getPublicDatabaseError } from "@/lib/db";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const keyword = searchParams.get("keyword") || "";
+  const dateFrom = searchParams.get("dateFrom") || "";
+  const dateTo = searchParams.get("dateTo") || "";
   const page = Number(searchParams.get("page") || 1);
   const pageSize = Number(searchParams.get("pageSize") || 20);
 
@@ -41,12 +43,16 @@ export async function GET(request: Request) {
           OR sku_code LIKE :likeKeyword
           OR sku_name LIKE :likeKeyword
         )
+        AND (:dateFrom = '' OR created_at >= :dateFrom)
+        AND (:dateTo = '' OR created_at < DATE_ADD(:dateTo, INTERVAL 1 DAY))
         ORDER BY id DESC
         LIMIT :limit OFFSET :offset
       `,
       {
         keyword,
         likeKeyword,
+        dateFrom,
+        dateTo,
         limit: pageSize,
         offset: (page - 1) * pageSize,
       },
@@ -64,8 +70,10 @@ export async function GET(request: Request) {
           OR sku_code LIKE :likeKeyword
           OR sku_name LIKE :likeKeyword
         )
+        AND (:dateFrom = '' OR created_at >= :dateFrom)
+        AND (:dateTo = '' OR created_at < DATE_ADD(:dateTo, INTERVAL 1 DAY))
       `,
-      { keyword, likeKeyword },
+      { keyword, likeKeyword, dateFrom, dateTo },
     );
 
     const [{ total }] = countRows as Array<{ total: number }>;
@@ -78,7 +86,7 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "运单列表查询失败。" },
+      { error: getPublicDatabaseError(error, "运单列表查询失败。") },
       { status: 500 },
     );
   }

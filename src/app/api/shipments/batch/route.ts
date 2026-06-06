@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { assertDatabaseConfigured, ensureSchema, getPool } from "@/lib/db";
+import { assertDatabaseConfigured, ensureSchema, getPool, getPublicDatabaseError } from "@/lib/db";
 import { sendDingTalkNotification } from "@/lib/dingtalk";
 import { ShipmentRow, SubmitBatchResult } from "@/lib/types";
 import { detectDuplicateExternalCodes, validateShipmentRow } from "@/lib/validators/shipment";
@@ -223,11 +223,12 @@ export async function POST(request: Request) {
       connection.release();
     }
   } catch (error) {
+    const publicError = getPublicDatabaseError(error, "批量提交失败。");
     await notifyImportResult("批量下单写入失败", [
-      `- 原因：${error instanceof Error ? error.message : "批量提交失败。"}`,
+      `- 原因：${publicError}`,
     ]);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "批量提交失败。" },
+      { error: publicError },
       { status: 500 },
     );
   }
