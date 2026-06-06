@@ -482,13 +482,15 @@ export function PreviewGrid() {
           ) : null}
         </div>
 
-        <Table
-          rowKey="rowNumber"
-          columns={tableColumns}
-          dataSource={visibleRows}
-          pagination={false}
-          scroll={{ x: 1800, y: "62vh" }}
-        />
+        <div className="panel-list rounded">
+          <Table
+            rowKey="rowNumber"
+            columns={tableColumns}
+            dataSource={visibleRows}
+            pagination={false}
+            scroll={{ x: 1800, y: "62vh" }}
+          />
+        </div>
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-slate-600">
             当前显示第 {page} / {totalPages} 页，每页 {pageSize} 行，共 {rows.length} 行

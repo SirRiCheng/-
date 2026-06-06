@@ -111,7 +111,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="panel mt-5 overflow-hidden rounded">
+      <section className="panel panel-list mt-5 overflow-hidden rounded">
         <Table rowKey="code" columns={columns} dataSource={modules} pagination={false} scroll={{ x: 760 }} />
       </section>
     </main>

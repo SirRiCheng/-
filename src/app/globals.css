@@ -3,15 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --app-bg: #f8fafc;
-  --app-surface: #ffffff;
-  --app-panel: #ffffff;
+  --app-bg: #e7fbfa;
+  --app-surface: #f2fffe;
+  --app-panel: #eafffe;
+  --app-list-surface: #ffffff;
   --app-ink: #111827;
-  --app-muted: #6b7280;
-  --app-line: #e5e7eb;
+  --app-muted: #4b6b69;
+  --app-line: rgba(15, 198, 194, 0.28);
   --app-accent: #0fc6c2;
   --app-accent-hover: #0ab4b0;
-  --app-accent-soft: rgba(15, 198, 194, 0.1);
+  --app-accent-soft: rgba(15, 198, 194, 0.14);
+  --app-accent-wash: rgba(15, 198, 194, 0.08);
   --app-deep: #075d5b;
 }
 
@@ -26,7 +28,9 @@ body {
     system-ui, sans-serif;
   color: var(--app-ink);
   min-height: 100vh;
-  background: var(--app-bg);
+  background:
+    linear-gradient(180deg, rgba(15, 198, 194, 0.16) 0%, rgba(15, 198, 194, 0.04) 240px),
+    var(--app-bg);
 }
 
 * {
@@ -44,14 +48,18 @@ body {
 
   .panel {
     border: 1px solid var(--app-line);
-    background: var(--app-surface);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    background: var(--app-panel);
+    box-shadow: 0 8px 22px rgba(7, 93, 91, 0.08);
+  }
+
+  .panel-list {
+    background: var(--app-list-surface);
   }
 
   .panel-strong {
     border: 1px solid var(--app-line);
-    background: #ffffff;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    background: var(--app-panel);
+    box-shadow: 0 8px 22px rgba(7, 93, 91, 0.08);
   }
 
   .eyebrow {
@@ -66,7 +74,7 @@ body {
 
   .data-chip {
     border: 1px solid var(--app-line);
-    background: #ffffff;
+    background: var(--app-surface);
   }
 
   .app-button-primary {

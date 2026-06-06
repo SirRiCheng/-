@@ -179,7 +179,7 @@ export function OrdersTable() {
         ) : null}
       </section>
 
-      <section className="panel overflow-hidden rounded">
+      <section className="panel panel-list overflow-hidden rounded">
         <Table
           rowKey="id"
           columns={columns}

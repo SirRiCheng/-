@@ -64,7 +64,7 @@ export function OrderDetailView({ detail }: { detail: ShipmentDetailResponse }) 
         </Card>
       </section>
 
-      <Card title="SKU 明细">
+      <Card title="SKU 明细" className="panel-list">
         <Table
           rowKey="id"
           columns={skuColumns}

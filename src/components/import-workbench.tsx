@@ -417,7 +417,7 @@ export function ImportWorkbench() {
                 </div>
               </div>
             ) : null}
-            <div className="rounded border border-slate-200 p-4">
+            <div className="panel-list rounded border border-slate-200 p-4">
               <p className="mb-2 font-medium text-slate-950">已识别字段</p>
               <Table
                 rowKey="field"
