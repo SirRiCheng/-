@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { AntdRegistry } from "@ant-design/nextjs-registry";
 import "./globals.css";
 import { AppFrame } from "@/components/app-frame";
+import { AntdThemeProvider } from "@/components/antd-theme-provider";
 
 export const metadata: Metadata = {
   title: "Universal Excel Importer",
@@ -15,7 +17,11 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body className="min-h-screen bg-[var(--app-bg)] text-slate-950 antialiased">
-        <AppFrame>{children}</AppFrame>
+        <AntdRegistry>
+          <AntdThemeProvider>
+            <AppFrame>{children}</AppFrame>
+          </AntdThemeProvider>
+        </AntdRegistry>
       </body>
     </html>
   );

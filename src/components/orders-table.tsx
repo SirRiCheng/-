@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { Alert, Button, DatePicker, Form, Input, Pagination, Space, Table, Tag } from "antd";
+import type { ColumnsType } from "antd/es/table";
+import dayjs, { Dayjs } from "dayjs";
 import { ShipmentRecord } from "@/lib/types";
 
 type ShipmentsResponse = {
@@ -13,10 +16,7 @@ type ShipmentsResponse = {
 
 export function OrdersTable() {
   const [items, setItems] = useState<ShipmentRecord[]>([]);
-  const [keyword, setKeyword] = useState("");
   const [submittedKeyword, setSubmittedKeyword] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
   const [submittedDateFrom, setSubmittedDateFrom] = useState("");
   const [submittedDateTo, setSubmittedDateTo] = useState("");
   const [total, setTotal] = useState(0);
@@ -67,6 +67,54 @@ export function OrdersTable() {
   }, [page, pageSize, submittedDateFrom, submittedDateTo, submittedKeyword]);
 
   const pageCount = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total]);
+  const columns: ColumnsType<ShipmentRecord> = [
+    {
+      title: "外部编码",
+      dataIndex: "externalCode",
+      ellipsis: true,
+      render: (value: string | undefined) => value || "-",
+    },
+    {
+      title: "收货门店",
+      dataIndex: "storeName",
+      ellipsis: true,
+      render: (value: string) => value || "-",
+    },
+    {
+      title: "收件人",
+      dataIndex: "receiverName",
+      ellipsis: true,
+      render: (value: string) => value || "-",
+    },
+    {
+      title: "SKU",
+      key: "sku",
+      ellipsis: true,
+      render: (_, order) => `${order.skuCode} / ${order.skuName}`,
+    },
+    {
+      title: "数量",
+      dataIndex: "quantity",
+      width: 100,
+    },
+    {
+      title: "创建时间",
+      dataIndex: "createdAt",
+      width: 180,
+      ellipsis: true,
+    },
+    {
+      title: "操作",
+      key: "action",
+      width: 112,
+      fixed: "right",
+      render: (_, order) => (
+        <Link href={`/orders/${order.id}`} className="app-link whitespace-nowrap">
+          查看详情
+        </Link>
+      ),
+    },
+  ];
 
   return (
     <div className="grid gap-5">
@@ -78,132 +126,81 @@ export function OrdersTable() {
               支持按外部编码、门店、收件人、SKU 搜索，数据来自已配置的 MySQL/TiDB。
             </p>
           </div>
-          <span className="rounded bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
-            数据库数据
-          </span>
+          <Tag color="success">数据库数据</Tag>
         </div>
 
-        <form
-          className="mt-6 flex flex-wrap gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
+        <Form
+          layout="inline"
+          className="mt-6"
+          onFinish={(values: { keyword?: string; dateRange?: [Dayjs, Dayjs] }) => {
             setPage(1);
-            setSubmittedKeyword(keyword.trim());
-            setSubmittedDateFrom(dateFrom);
-            setSubmittedDateTo(dateTo);
+            setSubmittedKeyword(values.keyword?.trim() || "");
+            setSubmittedDateFrom(values.dateRange?.[0] ? values.dateRange[0].format("YYYY-MM-DD") : "");
+            setSubmittedDateTo(values.dateRange?.[1] ? values.dateRange[1].format("YYYY-MM-DD") : "");
           }}
         >
-          <label className="min-w-[260px] flex-1">
-            <span className="mb-2 block text-sm font-medium text-slate-700">关键词</span>
-          <input
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-            placeholder="输入外部编码 / 门店 / 收件人 / SKU"
-            className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[var(--app-accent)]"
-          />
-          </label>
-          <label>
-            <span className="mb-2 block text-sm font-medium text-slate-700">提交开始日期</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[var(--app-accent)]"
+          <Form.Item name="keyword" className="min-w-[280px] flex-1">
+            <Input
+              allowClear
+              placeholder="输入外部编码 / 门店 / 收件人 / SKU"
             />
-          </label>
-          <label>
-            <span className="mb-2 block text-sm font-medium text-slate-700">提交结束日期</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-[var(--app-accent)]"
+          </Form.Item>
+          <Form.Item name="dateRange">
+            <DatePicker.RangePicker
+              allowEmpty={[true, true]}
+              presets={[
+                { label: "今天", value: [dayjs(), dayjs()] },
+                { label: "最近7天", value: [dayjs().subtract(6, "day"), dayjs()] },
+              ]}
             />
-          </label>
-          <button
-            type="submit"
-            className="self-end rounded bg-[var(--app-accent)] px-5 py-2 text-sm font-medium text-white transition hover:bg-teal-500"
-          >
-            搜索
-          </button>
-        </form>
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit">
+                搜索
+              </Button>
+              <Button
+                htmlType="button"
+                onClick={() => {
+                  setPage(1);
+                  setSubmittedKeyword("");
+                  setSubmittedDateFrom("");
+                  setSubmittedDateTo("");
+                }}
+              >
+                重置
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
 
         {error ? (
-          <p className="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </p>
+          <Alert className="mt-4" type="error" message={error} showIcon />
         ) : null}
       </section>
 
       <section className="panel overflow-hidden rounded">
-        <table className="min-w-full divide-y divide-slate-200 text-sm">
-          <thead className="bg-slate-100 text-left text-slate-900">
-            <tr>
-              <th className="px-5 py-4 font-semibold">外部编码</th>
-              <th className="px-5 py-4 font-semibold">收货门店</th>
-              <th className="px-5 py-4 font-semibold">收件人</th>
-              <th className="px-5 py-4 font-semibold">SKU</th>
-              <th className="px-5 py-4 font-semibold">数量</th>
-              <th className="px-5 py-4 font-semibold">创建时间</th>
-              <th className="px-5 py-4 font-semibold">操作</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {isLoading ? (
-              <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-slate-500">
-                  列表加载中...
-                </td>
-              </tr>
-            ) : items.length ? (
-              items.map((order) => (
-                <tr key={order.id}>
-                  <td className="px-5 py-4 font-medium text-slate-900">{order.externalCode || "-"}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.storeName || "-"}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.receiverName || "-"}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.skuCode} / {order.skuName}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.quantity}</td>
-                  <td className="px-5 py-4 text-slate-600">{order.createdAt}</td>
-                  <td className="px-5 py-4">
-                    <Link href={`/orders/${order.id}`} className="font-medium text-blue-600 transition hover:text-blue-700">
-                      查看详情
-                    </Link>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-slate-500">
-                  暂无数据
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={items}
+          loading={isLoading}
+          pagination={false}
+          scroll={{ x: 1120 }}
+        />
       </section>
 
       <section className="panel flex items-center justify-between rounded px-5 py-4">
         <p className="text-sm text-slate-600">
           第 {page} / {pageCount} 页，共 {total} 条
         </p>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
-            className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            上一页
-          </button>
-          <button
-            type="button"
-            disabled={page >= pageCount}
-            onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-            className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            下一页
-          </button>
-        </div>
+        <Pagination
+          current={page}
+          total={total}
+          pageSize={pageSize}
+          showSizeChanger={false}
+          onChange={(nextPage) => setPage(nextPage)}
+        />
       </section>
     </div>
   );

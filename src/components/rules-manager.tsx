@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Alert, Button, Checkbox, Input, Space, Table, Tag, Upload } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { AlertTriangle, Copy, FileSpreadsheet, Plus, Save, Trash2 } from "lucide-react";
 import { rebuildParsedPayload } from "@/lib/excel/standardize";
 import { sanitizeRuleRecords } from "@/lib/import-session";
@@ -109,6 +111,96 @@ export function RulesManager() {
   const selectedRecord = records.find((record) => record.templateSignature === selectedSignature) || records[0];
   const canEditSelected = Boolean(selectedRecord && editingSignature === selectedRecord.templateSignature);
   const ruleWarnings = selectedRecord ? getRuleWarnings(selectedRecord) : [];
+  const recordColumns: ColumnsType<TemplateMappingRecord> = [
+    {
+      title: (
+        <Checkbox
+          checked={records.length > 0 && checkedSignatures.length === records.length}
+          indeterminate={checkedSignatures.length > 0 && checkedSignatures.length < records.length}
+          onChange={(event) =>
+            setCheckedSignatures(event.target.checked ? records.map((record) => record.templateSignature) : [])
+          }
+          aria-label="选择全部规则"
+        />
+      ),
+      width: 52,
+      render: (_, record) => (
+        <Checkbox
+          checked={checkedSignatures.includes(record.templateSignature)}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) =>
+            setCheckedSignatures((current) =>
+              event.target.checked
+                ? [...current, record.templateSignature]
+                : current.filter((signature) => signature !== record.templateSignature),
+            )
+          }
+          aria-label={`选择规则 ${record.templateName || record.templateSignature}`}
+        />
+      ),
+    },
+    {
+      title: "规则名称",
+      dataIndex: "templateName",
+      render: (_, record) => (
+        <div>
+          <p className="font-medium text-slate-950">{record.templateName || record.rule?.name || "未命名规则"}</p>
+          <p className="mt-1 max-w-[18rem] truncate text-xs text-slate-500">{record.templateSignature}</p>
+        </div>
+      ),
+    },
+    {
+      title: "操作",
+      key: "action",
+      width: 88,
+      render: (_, record) => (
+        <Button
+          type="link"
+          size="small"
+          onClick={(event) => {
+            event.stopPropagation();
+            editRecord(record.templateSignature);
+          }}
+        >
+          编辑
+        </Button>
+      ),
+    },
+  ];
+  const previewColumns: ColumnsType<ParsedImportPayload["rows"][number]> = [
+    {
+      title: "行号",
+      dataIndex: "rowNumber",
+      width: 80,
+    },
+    {
+      title: "门店/收件人",
+      key: "receiver",
+      render: (_, row) =>
+        row.storeName || [row.receiverName, row.receiverPhone, row.receiverAddress].filter(Boolean).join(" / ") || "-",
+    },
+    {
+      title: "SKU 编码",
+      dataIndex: "skuCode",
+      render: (value: string) => value || "-",
+    },
+    {
+      title: "SKU 名称",
+      dataIndex: "skuName",
+      render: (value: string) => value || "-",
+    },
+    {
+      title: "数量",
+      dataIndex: "quantity",
+      width: 80,
+      render: (value: number | "") => value || "-",
+    },
+    {
+      title: "备注",
+      dataIndex: "remark",
+      render: (value: string | undefined) => value || "-",
+    },
+  ];
 
   useEffect(() => {
     let active = true;
@@ -324,18 +416,17 @@ export function RulesManager() {
             <h2 className="text-base font-semibold text-slate-950">解析规则库</h2>
             <p className="mt-2 text-sm text-slate-500">选择一条规则后在右侧编辑。</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
+          <Space wrap>
+            <Button
+              danger
               disabled={!checkedSignatures.length}
               onClick={() => void removeRecords(checkedSignatures)}
-              className="inline-flex items-center gap-2 rounded border border-rose-200 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              icon={<Trash2 className="h-4 w-4" />}
             >
-              <Trash2 className="h-4 w-4" />
               批量删除
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              type="primary"
               onClick={() => {
                 const record = createEmptyRuleRecord();
                 const nextRecords = sanitizeRuleRecords([record, ...records]);
@@ -347,93 +438,36 @@ export function RulesManager() {
                 setMessage("新规则已创建，配置字段后可上传样例文件试解析。");
                 setError("");
               }}
-              className="inline-flex items-center gap-2 rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-teal-500"
+              icon={<Plus className="h-4 w-4" />}
             >
-              <Plus className="h-4 w-4" />
               新建规则
-            </button>
-          </div>
+            </Button>
+          </Space>
         </div>
 
         {message ? (
-          <p className="mt-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {message}
-          </p>
+          <Alert className="mt-4" type="success" message={message} showIcon />
         ) : null}
         {error ? (
-          <p className="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </p>
+          <Alert className="mt-4" type="error" message={error} showIcon />
         ) : null}
 
         <div className="mt-5 overflow-hidden rounded border border-slate-200">
           {records.length ? (
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-100 text-left text-slate-900">
-                <tr>
-                  <th className="w-12 px-4 py-3">
-                    <input
-                      type="checkbox"
-                      checked={records.length > 0 && checkedSignatures.length === records.length}
-                      onChange={(event) =>
-                        setCheckedSignatures(event.target.checked ? records.map((record) => record.templateSignature) : [])
-                      }
-                      className="h-4 w-4 rounded border-slate-300 text-[var(--app-accent)]"
-                      aria-label="选择全部规则"
-                    />
-                  </th>
-                  <th className="px-4 py-3 font-semibold">规则名称</th>
-                  <th className="px-4 py-3 font-semibold">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {records.map((record) => (
-                  <tr
-                    key={record.templateSignature}
-                    onClick={() => selectRecord(record.templateSignature)}
-                    aria-selected={selectedRecord?.templateSignature === record.templateSignature}
-                    className={`cursor-pointer transition ${
-                      selectedRecord?.templateSignature === record.templateSignature
-                        ? "border-l-4 border-[var(--app-accent)] bg-cyan-50"
-                        : "border-l-4 border-transparent hover:bg-slate-50"
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={checkedSignatures.includes(record.templateSignature)}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) =>
-                          setCheckedSignatures((current) =>
-                            event.target.checked
-                              ? [...current, record.templateSignature]
-                              : current.filter((signature) => signature !== record.templateSignature),
-                          )
-                        }
-                        className="h-4 w-4 rounded border-slate-300 text-[var(--app-accent)]"
-                        aria-label={`选择规则 ${record.templateName || record.templateSignature}`}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-slate-950">{record.templateName || record.rule?.name || "未命名规则"}</p>
-                      <p className="mt-1 max-w-[18rem] truncate text-xs text-slate-500">{record.templateSignature}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          editRecord(record.templateSignature);
-                        }}
-                        className="font-medium text-blue-600 hover:text-blue-700"
-                      >
-                        编辑
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <Table
+              rowKey="templateSignature"
+              columns={recordColumns}
+              dataSource={records}
+              pagination={false}
+              rowClassName={(record) =>
+                selectedRecord?.templateSignature === record.templateSignature
+                  ? "cursor-pointer bg-cyan-50"
+                  : "cursor-pointer"
+              }
+              onRow={(record) => ({
+                onClick: () => selectRecord(record.templateSignature),
+              })}
+            />
           ) : (
             <div className="p-6 text-sm text-slate-500">
               暂无规则。可以新建规则，或在导入页由 AI 生成规则后保存。
@@ -447,9 +481,8 @@ export function RulesManager() {
           <div className="grid gap-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-slate-950">规则编辑</h2>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
+              <Space wrap>
+                <Button
                   onClick={() => {
                     const cloned: TemplateMappingRecord = {
                       ...selectedRecord,
@@ -463,88 +496,70 @@ export function RulesManager() {
                     setSelectedSignature(cloned.templateSignature);
                     setEditingSignature(cloned.templateSignature);
                   }}
-                  className="inline-flex items-center gap-2 rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  icon={<Copy className="h-4 w-4" />}
                 >
-                  <Copy className="h-4 w-4" />
                   复制
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  danger
                   onClick={() => void removeRecord(selectedRecord)}
-                  className="inline-flex items-center gap-2 rounded border border-rose-200 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50"
+                  icon={<Trash2 className="h-4 w-4" />}
                 >
-                  <Trash2 className="h-4 w-4" />
                   删除
-                </button>
-              </div>
+                </Button>
+              </Space>
             </div>
 
-            <div
-              className={`rounded border px-4 py-3 text-sm ${
+            <Alert
+              type={ruleWarnings.length ? "warning" : "success"}
+              showIcon
+              icon={<AlertTriangle className="h-4 w-4" />}
+              message={ruleWarnings.length ? "规则需要补充" : "规则字段已满足 V2 要求"}
+              description={
                 ruleWarnings.length
-                  ? "border-amber-200 bg-amber-50 text-amber-800"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
-              }`}
-            >
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />
-                <div>
-                  <p className="font-medium">{ruleWarnings.length ? "规则需要补充" : "规则字段已满足 V2 要求"}</p>
-                  {ruleWarnings.length ? (
-                    <ul className="mt-2 grid gap-1">
-                      {ruleWarnings.map((warning) => (
-                        <li key={warning}>{warning}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="mt-1">已覆盖 SKU 编码、SKU 名称、数量，以及门店或完整收件人信息。</p>
-                  )}
-                </div>
-              </div>
-            </div>
+                  ? ruleWarnings.join(" ")
+                  : "已覆盖 SKU 编码、SKU 名称、数量，以及门店或完整收件人信息。"
+              }
+            />
 
-            <label className="grid gap-2">
+            <div className="grid gap-2">
               <span className="text-sm font-medium text-slate-700">规则名称</span>
-              <input
+              <Input
                 value={selectedRecord.templateName || ""}
-                readOnly={!canEditSelected}
+                disabled={!canEditSelected}
                 onChange={(event) =>
                   updateSelected({
                     templateName: event.target.value,
                     rule: selectedRecord.rule ? { ...selectedRecord.rule, name: event.target.value } : undefined,
                   })
                 }
-                className={`rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)] ${
-                  canEditSelected ? "bg-white" : "bg-slate-50 text-slate-500"
-                }`}
               />
-            </label>
+            </div>
 
-            <label className="grid gap-2">
+            <div className="grid gap-2">
               <span className="text-sm font-medium text-slate-700">说明</span>
-              <textarea
+              <Input.TextArea
                 value={selectedRecord.rule?.description || ""}
-                readOnly={!canEditSelected}
+                disabled={!canEditSelected}
+                rows={4}
                 onChange={(event) =>
                   updateSelected({
                     rule: selectedRecord.rule ? { ...selectedRecord.rule, description: event.target.value } : undefined,
                   })
                 }
-                className={`min-h-24 rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)] ${
-                  canEditSelected ? "bg-white" : "bg-slate-50 text-slate-500"
-                }`}
               />
-            </label>
+            </div>
 
             <div>
               <p className="text-sm font-medium text-slate-700">结构操作</p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <Space className="mt-3" wrap>
                 {operationOptions.map((operation) => {
                   const checked = selectedRecord.rule?.operations.includes(operation);
                   return (
-                    <button
+                    <Button
                       key={operation}
-                      type="button"
+                      size="small"
+                      type={checked ? "primary" : "default"}
                       disabled={!canEditSelected}
                       onClick={() => {
                         const current = selectedRecord.rule?.operations || [];
@@ -559,33 +574,27 @@ export function RulesManager() {
                             : undefined,
                         });
                       }}
-                      className={`rounded border px-3 py-1.5 text-xs ${
-                        checked ? "border-cyan-300 bg-cyan-50 text-cyan-800" : "border-slate-200 bg-white text-slate-500"
-                      } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
                       {operation}
-                    </button>
+                    </Button>
                   );
                 })}
-              </div>
+              </Space>
             </div>
 
             <div>
               <p className="text-sm font-medium text-slate-700">字段映射</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {shipmentFields.map((field) => (
-                  <label key={field} className="grid gap-1">
+                  <div key={field} className="grid gap-1">
                     <span className="text-xs text-slate-500">{fieldLabels[field]}</span>
-                    <input
+                    <Input
                       value={selectedRecord.mapping[field] || ""}
-                      readOnly={!canEditSelected}
+                      disabled={!canEditSelected}
                       onChange={(event) => updateMapping(field, event.target.value)}
                       placeholder="源文件列名 / 文本键名"
-                      className={`rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[var(--app-accent)] ${
-                        canEditSelected ? "bg-white" : "bg-slate-50 text-slate-500"
-                      }`}
                     />
-                  </label>
+                  </div>
                 ))}
               </div>
             </div>
@@ -596,39 +605,36 @@ export function RulesManager() {
                   <p className="text-sm font-medium text-slate-900">试解析预览</p>
                   <p className="mt-1 text-xs text-slate-500">上传样例文件，用当前规则解析前 5 行并检查错误行数。</p>
                 </div>
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">
-                  <FileSpreadsheet className="h-4 w-4" />
-                  选择样例文件
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.doc,.docx,.pdf,.txt"
-                    className="hidden"
-                    onChange={(event) => {
-                      setPreviewFile(event.target.files?.[0] || null);
-                      setPreview(null);
-                      setPreviewError("");
-                    }}
-                  />
-                </label>
+                <Upload
+                  accept=".xlsx,.xls,.doc,.docx,.pdf,.txt"
+                  maxCount={1}
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    setPreviewFile(file);
+                    setPreview(null);
+                    setPreviewError("");
+                    return false;
+                  }}
+                >
+                  <Button icon={<FileSpreadsheet className="h-4 w-4" />}>选择样例文件</Button>
+                </Upload>
               </div>
 
               {previewFile ? <p className="mt-3 text-xs text-slate-500">当前样例：{previewFile.name}</p> : null}
               {previewError ? (
-                <p className="mt-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                  {previewError}
-                </p>
+                <Alert className="mt-3" type="error" message={previewError} showIcon />
               ) : null}
 
               <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
+                <Button
+                  type="primary"
                   disabled={!previewFile || isPreviewing}
                   onClick={() => void previewSelectedRule()}
-                  className="inline-flex items-center gap-2 rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  loading={isPreviewing}
+                  icon={<FileSpreadsheet className="h-4 w-4" />}
                 >
-                  <FileSpreadsheet className="h-4 w-4" />
                   {isPreviewing ? "解析中" : "试解析当前文件"}
-                </button>
+                </Button>
                 {preview ? (
                   <span className="text-sm text-slate-600">
                     已解析 {preview.totals.parsedRows} 行，错误行 {preview.totals.errorRows} 行
@@ -637,33 +643,15 @@ export function RulesManager() {
               </div>
 
               {preview ? (
-                <div className="mt-4 overflow-x-auto rounded border border-slate-200 bg-white">
-                  <table className="min-w-full divide-y divide-slate-200 text-xs">
-                    <thead className="bg-slate-100 text-left text-slate-700">
-                      <tr>
-                        <th className="px-3 py-2 font-semibold">行号</th>
-                        <th className="px-3 py-2 font-semibold">门店/收件人</th>
-                        <th className="px-3 py-2 font-semibold">SKU 编码</th>
-                        <th className="px-3 py-2 font-semibold">SKU 名称</th>
-                        <th className="px-3 py-2 font-semibold">数量</th>
-                        <th className="px-3 py-2 font-semibold">备注</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {preview.rows.slice(0, 5).map((row) => (
-                        <tr key={`${row.rowNumber}-${row.skuCode}-${row.skuName}`}>
-                          <td className="px-3 py-2 text-slate-500">{row.rowNumber}</td>
-                          <td className="px-3 py-2 text-slate-800">
-                            {row.storeName || [row.receiverName, row.receiverPhone, row.receiverAddress].filter(Boolean).join(" / ") || "-"}
-                          </td>
-                          <td className="px-3 py-2 text-slate-800">{row.skuCode || "-"}</td>
-                          <td className="px-3 py-2 text-slate-800">{row.skuName || "-"}</td>
-                          <td className="px-3 py-2 text-slate-800">{row.quantity || "-"}</td>
-                          <td className="px-3 py-2 text-slate-500">{row.remark || "-"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="mt-4 rounded border border-slate-200 bg-white">
+                  <Table
+                    rowKey={(row) => `${row.rowNumber}-${row.skuCode}-${row.skuName}`}
+                    size="small"
+                    columns={previewColumns}
+                    dataSource={preview.rows.slice(0, 5)}
+                    pagination={false}
+                    scroll={{ x: 900 }}
+                  />
                   {preview.issues.length ? (
                     <div className="border-t border-slate-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                       {preview.issues.slice(0, 3).map((issue) => (
@@ -678,15 +666,14 @@ export function RulesManager() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
+              <Button
+                type="primary"
                 disabled={!canEditSelected}
                 onClick={() => void saveRecord(selectedRecord)}
-                className="inline-flex w-fit items-center gap-2 rounded bg-slate-950 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                icon={<Save className="h-4 w-4" />}
               >
-                <Save className="h-4 w-4" />
                 保存规则
-              </button>
+              </Button>
             </div>
           </div>
         ) : (

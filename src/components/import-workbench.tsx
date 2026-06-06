@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Alert, Button, Descriptions, Progress, Select, Space, Table, Tag, Upload } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import { rebuildParsedPayload } from "@/lib/excel/standardize";
 import { sanitizeRuleRecords } from "@/lib/import-session";
 import {
@@ -165,10 +167,7 @@ export function ImportWorkbench() {
     return sessionId;
   }
 
-  async function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  async function parseSelectedFile(file: File) {
     setIsLoading(true);
     setError("");
     setResult(null);
@@ -276,6 +275,37 @@ export function ImportWorkbench() {
 
   const missingRequiredFields = result?.template.missingFields || [];
   const canSaveManualMapping = result && Object.keys(manualMapping).length > 0;
+  const summaryItems = result
+    ? [
+        { key: "fileName", label: "文件", children: result.fileName },
+        { key: "sheetName", label: "Sheet", children: result.sheetName },
+        { key: "signature", label: "模板签名", children: result.template.signature || "无" },
+        { key: "parsedRows", label: "解析行数", children: result.totals.parsedRows },
+        { key: "errorRows", label: "错误行数", children: result.totals.errorRows },
+        { key: "mappingCount", label: "映射字段数", children: Object.keys(result.template.mapping).length },
+        {
+          key: "chunks",
+          label: "解析分块",
+          children: `${result.performance.totalChunks} 块 / 每块 ${result.performance.chunkSize} 行`,
+        },
+        { key: "pageSize", label: "预览建议", children: `每页 ${result.performance.recommendedPageSize} 行` },
+        { key: "matchedBy", label: "映射来源", children: result.template.matchedBy },
+        ...(generatedBy ? [{ key: "generatedBy", label: "规则生成", children: generatedBy }] : []),
+      ]
+    : [];
+  const mappingColumns: ColumnsType<{ field: (typeof shipmentFields)[number]; source: string }> = [
+    {
+      title: "标准字段",
+      dataIndex: "field",
+      width: 180,
+      render: (field: (typeof shipmentFields)[number]) => fieldLabels[field],
+    },
+    {
+      title: "来源列",
+      dataIndex: "source",
+      render: (source: string) => source || "-",
+    },
+  ];
 
   return (
     <div className="grid gap-5">
@@ -292,54 +322,50 @@ export function ImportWorkbench() {
           </span>
         </div>
 
-        <label className="group flex min-h-44 cursor-pointer flex-col items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 p-8 text-center transition hover:border-[var(--app-accent)]">
-          <div className="relative">
-            <span className="block text-base font-semibold text-slate-900">拖拽或点击上传文件</span>
-            <span className="mt-2 block max-w-md text-sm leading-6 text-slate-500">
-              支持 `.xlsx` / `.xls` / `.docx` / `.pdf` / `.txt`。Excel 走表格解析，其他文件调用大模型抽取结构化下单数据。
-            </span>
-          </div>
-          <input
-            type="file"
-            accept=".xlsx,.xls,.doc,.docx,.pdf,.txt"
-            className="hidden"
-            onChange={onFileChange}
-          />
-          <span className="relative mt-5 rounded bg-[var(--app-accent)] px-5 py-2 text-sm font-medium text-white transition hover:bg-teal-500">
-            {isLoading ? "解析中..." : "选择文件"}
-          </span>
-        </label>
+        <Upload.Dragger
+          accept=".xlsx,.xls,.doc,.docx,.pdf,.txt"
+          disabled={isLoading}
+          maxCount={1}
+          showUploadList={false}
+          beforeUpload={(file) => {
+            void parseSelectedFile(file);
+            return false;
+          }}
+        >
+          <p className="text-base font-semibold text-slate-900">拖拽或点击上传文件</p>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+            支持 `.xlsx` / `.xls` / `.docx` / `.pdf` / `.txt`。Excel 走表格解析，其他文件调用大模型抽取结构化下单数据。
+          </p>
+          <Button className="mt-5" type="primary" loading={isLoading}>
+            {isLoading ? "解析中" : "选择文件"}
+          </Button>
+        </Upload.Dragger>
 
         <div className="mt-4 rounded border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-end gap-3">
-            <label className="min-w-[260px] flex-1">
+            <div className="min-w-[260px] flex-1">
               <span className="text-sm font-medium text-slate-700">手动选择规则</span>
-              <select
+              <Select
+                className="mt-2 w-full"
                 value={selectedRuleSignature}
-                onChange={(event) => setSelectedRuleSignature(event.target.value)}
-                className="mt-2 w-full rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[var(--app-accent)]"
-              >
-                <option value="">不选择已有规则，上传后新建 AI 推荐规则</option>
-                {ruleRecords.map((record) => (
-                  <option key={record.templateSignature} value={record.templateSignature}>
-                    {record.templateName || record.rule?.name || record.templateSignature}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Link
-              href="/rules"
-              className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              管理规则
+                onChange={setSelectedRuleSignature}
+                options={[
+                  { value: "", label: "不选择已有规则，上传后新建 AI 推荐规则" },
+                  ...ruleRecords.map((record) => ({
+                    value: record.templateSignature,
+                    label: record.templateName || record.rule?.name || record.templateSignature,
+                  })),
+                ]}
+              />
+            </div>
+            <Link href="/rules">
+              <Button>管理规则</Button>
             </Link>
           </div>
         </div>
 
         {error ? (
-          <p className="mt-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {error}
-          </p>
+          <Alert className="mt-4" type="error" message={error} showIcon />
         ) : null}
 
         <div className="mt-4 rounded border border-slate-200 bg-white p-4">
@@ -347,12 +373,7 @@ export function ImportWorkbench() {
             <p className="text-sm font-medium text-slate-800">{progress.message}</p>
             <p className="text-xs text-slate-500">{progress.percent}%</p>
           </div>
-          <div className="mt-3 h-2 overflow-hidden rounded bg-slate-200">
-            <div
-              className="h-full rounded bg-[var(--app-accent)] transition-all duration-500"
-              style={{ width: `${progress.percent}%` }}
-            />
-          </div>
+          <Progress className="mt-2" percent={progress.percent} showInfo={false} />
           {progress.current && progress.total ? (
             <p className="mt-2 text-xs text-slate-500">
               {progress.current} / {progress.total}
@@ -377,38 +398,14 @@ export function ImportWorkbench() {
           </div>
         ) : (
           <div className="mt-4 space-y-4 text-sm">
-            <div className="overflow-hidden rounded border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200">
-                <tbody className="divide-y divide-slate-100">
-                  {[
-                    ["文件", result.fileName],
-                    ["Sheet", result.sheetName],
-                    ["模板签名", result.template.signature || "无"],
-                    ["解析行数", String(result.totals.parsedRows)],
-                    ["错误行数", String(result.totals.errorRows)],
-                    ["映射字段数", String(Object.keys(result.template.mapping).length)],
-                    ["解析分块", `${result.performance.totalChunks} 块 / 每块 ${result.performance.chunkSize} 行`],
-                    ["预览建议", `每页 ${result.performance.recommendedPageSize} 行`],
-                    ["映射来源", result.template.matchedBy],
-                    ...(generatedBy ? [["规则生成", generatedBy]] : []),
-                  ].map(([label, value]) => (
-                    <tr key={label}>
-                      <td className="w-36 bg-slate-50 px-4 py-3 font-medium text-slate-700">{label}</td>
-                      <td className="px-4 py-3 text-slate-600">{value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Descriptions bordered size="small" column={{ xs: 1, md: 2 }} items={summaryItems} />
             {result.template.rule ? (
               <div className="rounded border border-slate-200 bg-white p-4">
                 <p className="font-medium text-slate-950">{result.template.rule.name}</p>
                 <p className="mt-2 text-xs leading-6 text-slate-500">{result.template.rule.description}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {result.template.rule.operations.map((operation) => (
-                    <span key={operation} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">
-                      {operation}
-                    </span>
+                    <Tag key={operation}>{operation}</Tag>
                   ))}
                 </div>
                 <div className="mt-4 grid gap-2">
@@ -422,42 +419,46 @@ export function ImportWorkbench() {
             ) : null}
             <div className="rounded border border-slate-200 p-4">
               <p className="mb-2 font-medium text-slate-950">已识别字段</p>
-              <pre className="overflow-x-auto text-xs leading-6 text-slate-600">
-                {JSON.stringify(result.template.mapping, null, 2)}
-              </pre>
+              <Table
+                rowKey="field"
+                size="small"
+                columns={mappingColumns}
+                dataSource={shipmentFields.map((field) => ({
+                  field,
+                  source: result.template.mapping[field] || "",
+                }))}
+                pagination={false}
+              />
             </div>
             {missingRequiredFields.length ? (
               <div className="rounded border border-amber-200 bg-amber-50 p-4">
                 <p className="mb-3 font-medium text-amber-800">手动映射缺失字段</p>
                 <div className="grid gap-3">
                   {missingRequiredFields.map((field) => (
-                    <label key={field} className="grid gap-2">
+                    <div key={field} className="grid gap-2">
                       <span className="text-xs text-amber-800">{fieldLabels[field]}</span>
-                      <select
+                      <Select
                         value={manualMapping[field] || ""}
-                        onChange={(event) =>
+                        onChange={(value) =>
                           setManualMapping((current) => ({
                             ...current,
-                            [field]: event.target.value || undefined,
+                            [field]: value || undefined,
                           }))
                         }
-                        className="rounded border border-amber-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
-                      >
-                        <option value="">请选择 Excel 列</option>
-                        {result.headers
-                          .filter(Boolean)
-                          .map((header) => (
-                            <option key={header} value={header}>
-                              {header}
-                            </option>
-                          ))}
-                      </select>
-                    </label>
+                        options={[
+                          { value: "", label: "请选择 Excel 列" },
+                          ...result.headers.filter(Boolean).map((header) => ({
+                            value: header,
+                            label: header,
+                          })),
+                        ]}
+                      />
+                    </div>
                   ))}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
+                  <Button
+                    type="primary"
                     disabled={!canSaveManualMapping}
                     onClick={async () => {
                       try {
@@ -482,16 +483,14 @@ export function ImportWorkbench() {
                         setError(requestError instanceof Error ? requestError.message : "保存规则失败，请检查数据库配置。");
                       }
                     }}
-                    className="rounded bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     保存映射并应用
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : null}
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
+            <Space wrap>
+              <Button
                 disabled={!result.template.rule}
                 onClick={async () => {
                   try {
@@ -509,24 +508,19 @@ export function ImportWorkbench() {
                     setError(requestError instanceof Error ? requestError.message : "保存规则失败，请检查数据库配置。");
                   }
                 }}
-                className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 确认并保存规则
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                type="primary"
                 onClick={() => router.push(sessionId ? `/preview?sessionId=${sessionId}` : "/preview")}
-                className="rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-500"
               >
                 进入预览编辑
-              </button>
-              <Link
-                href={sessionId ? `/preview?sessionId=${sessionId}` : "/preview"}
-                className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                打开预览页
+              </Button>
+              <Link href={sessionId ? `/preview?sessionId=${sessionId}` : "/preview"}>
+                <Button>打开预览页</Button>
               </Link>
-            </div>
+            </Space>
           </div>
         )}
       </section>

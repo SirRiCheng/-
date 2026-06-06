@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Alert, Button, Input, Pagination, Progress, Space, Table, Tag } from "antd";
+import type { ColumnsType } from "antd/es/table";
 import * as XLSX from "xlsx";
 import { ImportProgressState, ParsedImportPayload, ShipmentRow, SubmitBatchResult } from "@/lib/types";
 import { detectDuplicateExternalCodes, validateShipmentRow } from "@/lib/validators/shipment";
@@ -127,6 +129,45 @@ export function PreviewGrid() {
     () => rows.slice((page - 1) * pageSize, page * pageSize),
     [page, pageSize, rows],
   );
+  const tableColumns: ColumnsType<ShipmentRow> = [
+    {
+      title: "行号",
+      dataIndex: "rowNumber",
+      width: 88,
+      fixed: "left",
+      render: (value: number) => <span className="text-slate-500">{value}</span>,
+    },
+    ...columns.map((column) => ({
+      title: columnLabels[column],
+      dataIndex: column,
+      width: column === "receiverAddress" ? 240 : 180,
+      render: (_: unknown, row: ShipmentRow) => {
+        const hasIssue = issues.some((issue) => issue.rowNumber === row.rowNumber && issue.field === column);
+
+        return (
+          <Input
+            data-row={row.rowNumber}
+            data-field={String(column)}
+            value={formatCellValue(row, column)}
+            status={hasIssue ? "error" : undefined}
+            onChange={(event) => updateCell(row.rowNumber, column, event.target.value)}
+            onKeyDown={(event) => onCellKeyDown(event, row.rowNumber, column)}
+          />
+        );
+      },
+    })),
+    {
+      title: "操作",
+      key: "action",
+      width: 96,
+      fixed: "right",
+      render: (_, row) => (
+        <Button danger size="small" onClick={() => removeRow(row.rowNumber)}>
+          删除
+        </Button>
+      ),
+    },
+  ];
 
   useEffect(() => {
     setPage((current) => Math.min(Math.max(1, current), totalPages));
@@ -373,7 +414,8 @@ export function PreviewGrid() {
   if (!isLoaded) {
     return (
       <div className="panel rounded p-5">
-        预览数据加载中...
+        <Progress percent={30} showInfo={false} />
+        <p className="mt-3 text-sm text-slate-500">预览数据加载中...</p>
       </div>
     );
   }
@@ -395,46 +437,36 @@ export function PreviewGrid() {
                 : `当前总行数 ${rows.length}，支持门店模式或收件人模式二选一。`}
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <div className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">
-              错误数 {issues.length}
-            </div>
-            <button
-              type="button"
+          <Space wrap>
+            <Tag color={issues.length ? "error" : "success"}>错误数 {issues.length}</Tag>
+            <Button
               onClick={() => exportRowsToCsv(rows)}
               disabled={!payload}
-              className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               导出当前数据
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
               onClick={appendRow}
               disabled={!payload}
-              className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               新增空行
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              type="primary"
               onClick={submitRows}
-              disabled={!payload || isSubmitting}
-              className="rounded bg-[var(--app-accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-teal-500 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!payload}
+              loading={isSubmitting}
             >
               {isSubmitting ? "提交中..." : "提交下单"}
-            </button>
-          </div>
+            </Button>
+          </Space>
         </div>
 
         {submitError ? (
-          <p className="mb-4 rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {submitError}
-          </p>
+          <Alert className="mb-4" type="error" message={submitError} showIcon />
         ) : null}
         {submitMessage ? (
-          <p className="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {submitMessage}
-          </p>
+          <Alert className="mb-4" type="success" message={submitMessage} showIcon />
         ) : null}
 
         <div className="mb-5 rounded border border-slate-200 bg-white p-4">
@@ -442,12 +474,7 @@ export function PreviewGrid() {
             <p className="text-sm font-medium text-slate-800">{submitProgress.message}</p>
             <p className="text-xs text-slate-500">{submitProgress.percent}%</p>
           </div>
-          <div className="mt-3 h-2 overflow-hidden rounded bg-slate-200">
-            <div
-              className="h-full rounded bg-[var(--app-accent)] transition-all duration-500"
-              style={{ width: `${submitProgress.percent}%` }}
-            />
-          </div>
+          <Progress className="mt-2" percent={submitProgress.percent} showInfo={false} />
           {submitProgress.current !== undefined && submitProgress.total !== undefined ? (
             <p className="mt-2 text-xs text-slate-500">
               {submitProgress.current} / {submitProgress.total}
@@ -455,108 +482,44 @@ export function PreviewGrid() {
           ) : null}
         </div>
 
-        <div className="max-h-[62vh] overflow-auto rounded border border-slate-200 bg-white">
-          <table className="min-w-[1320px] divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-100 text-left text-slate-900">
-              <tr>
-                <th className="sticky top-0 z-10 bg-slate-100 px-4 py-3 font-semibold">行号</th>
-                {columns.map((column) => (
-                  <th
-                    key={column}
-                    className="sticky top-0 z-10 bg-slate-100 px-4 py-3 font-semibold"
-                  >
-                    {columnLabels[column]}
-                  </th>
-                ))}
-                <th className="sticky top-0 z-10 bg-slate-100 px-4 py-3 font-semibold">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {visibleRows.map((row) => (
-                <tr key={row.rowNumber} className="align-top">
-                  <td className="px-4 py-3 text-slate-500">{row.rowNumber}</td>
-                  {columns.map((column) => {
-                    const hasIssue = issues.some(
-                      (issue) => issue.rowNumber === row.rowNumber && issue.field === column,
-                    );
-
-                    return (
-                      <td key={column} className="px-2 py-2">
-                        <input
-                          data-row={row.rowNumber}
-                          data-field={String(column)}
-                          value={formatCellValue(row, column)}
-                          onChange={(event) => updateCell(row.rowNumber, column, event.target.value)}
-                          onKeyDown={(event) => onCellKeyDown(event, row.rowNumber, column)}
-                          className={`w-full rounded border px-3 py-2 outline-none transition ${
-                            hasIssue
-                              ? "border-rose-300 bg-rose-50 text-rose-800"
-                              : "border-slate-200 bg-slate-50 text-slate-700 focus:border-[var(--app-accent)] focus:bg-white"
-                          }`}
-                        />
-                      </td>
-                    );
-                  })}
-                  <td className="px-2 py-2">
-                    <button
-                      type="button"
-                      onClick={() => removeRow(row.rowNumber)}
-                      className="rounded border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
-                    >
-                      删除
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table
+          rowKey="rowNumber"
+          columns={tableColumns}
+          dataSource={visibleRows}
+          pagination={false}
+          scroll={{ x: 1800, y: "62vh" }}
+        />
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-slate-600">
             当前显示第 {page} / {totalPages} 页，每页 {pageSize} 行，共 {rows.length} 行
           </p>
-          <div className="flex gap-3">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-              className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              上一页
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              下一页
-            </button>
-          </div>
+          <Pagination
+            current={page}
+            total={rows.length}
+            pageSize={pageSize}
+            showSizeChanger={false}
+            onChange={setPage}
+          />
         </div>
       </section>
 
       <section className="panel rounded p-5">
         <div className="flex items-center justify-between gap-4">
           <h3 className="text-base font-semibold text-slate-950">错误汇总</h3>
-          <span className="rounded border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-700">
-            一次性展示全部问题
-          </span>
+          <Tag color="error">一次性展示全部问题</Tag>
         </div>
         <div className="mt-4 grid gap-3">
           {issues.length ? (
             issues.map((issue) => (
-              <div
+              <Alert
                 key={`${issue.rowNumber}-${issue.field}-${issue.message}`}
-                className="rounded border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
-              >
-                第 {issue.rowNumber} 行，字段 {columnLabels[issue.field]}：{issue.message}
-              </div>
+                type="error"
+                message={`第 ${issue.rowNumber} 行，字段 ${columnLabels[issue.field]}：${issue.message}`}
+                showIcon
+              />
             ))
           ) : (
-            <div className="rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              当前没有校验错误，可以直接提交下单。
-            </div>
+            <Alert type="success" message="当前没有校验错误，可以直接提交下单。" showIcon />
           )}
         </div>
       </section>

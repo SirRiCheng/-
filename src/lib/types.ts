@@ -110,6 +110,12 @@ export type ShipmentRecord = ShipmentRow & {
   updatedAt: string;
 };
 
+export type ShipmentDetailResponse = {
+  order: ShipmentRecord;
+  skuRows: ShipmentRecord[];
+  importJob?: ImportJobRecord | null;
+};
+
 export type ImportJobRecord = {
   id: number;
   fileName: string;

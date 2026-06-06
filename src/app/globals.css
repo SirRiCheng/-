@@ -10,6 +10,7 @@
   --app-muted: #6b7280;
   --app-line: #e5e7eb;
   --app-accent: #0fc6c2;
+  --app-accent-hover: #0ab4b0;
   --app-accent-soft: rgba(15, 198, 194, 0.1);
   --app-deep: #075d5b;
 }
@@ -66,6 +67,42 @@ body {
   .data-chip {
     border: 1px solid var(--app-line);
     background: #ffffff;
+  }
+
+  .app-button-primary {
+    border-radius: 4px;
+    background: var(--app-accent);
+    color: #ffffff;
+    font-weight: 500;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+  }
+
+  .app-button-primary:hover {
+    background: var(--app-accent-hover);
+  }
+
+  .app-link {
+    color: var(--app-deep);
+    font-weight: 500;
+    transition: color 160ms ease;
+  }
+
+  .app-link:hover {
+    color: var(--app-accent-hover);
+  }
+
+  .app-input {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #ffffff;
+    color: #374151;
+    outline: none;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+
+  .app-input:focus {
+    border-color: var(--app-accent);
+    box-shadow: 0 0 0 2px rgba(15, 198, 194, 0.12);
   }
 
   .metric-stack {
