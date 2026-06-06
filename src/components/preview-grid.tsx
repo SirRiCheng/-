@@ -469,7 +469,7 @@ export function PreviewGrid() {
           <Alert className="mb-4" type="success" message={submitMessage} showIcon />
         ) : null}
 
-        <div className="mb-5 rounded border border-slate-200 bg-white p-4">
+        <div className="sub-panel mb-5 rounded p-4">
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm font-medium text-slate-800">{submitProgress.message}</p>
             <p className="text-xs text-slate-500">{submitProgress.percent}%</p>
@@ -482,7 +482,7 @@ export function PreviewGrid() {
           ) : null}
         </div>
 
-        <div className="panel-list rounded">
+        <div className="panel-list overflow-hidden rounded">
           <Table
             rowKey="rowNumber"
             columns={tableColumns}

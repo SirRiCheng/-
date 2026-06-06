@@ -3,9 +3,9 @@
 @tailwind utilities;
 
 :root {
-  --app-bg: #e7fbfa;
-  --app-surface: #f2fffe;
-  --app-panel: #eafffe;
+  --app-bg: #e8fbfa;
+  --app-surface: #ffffff;
+  --app-panel: #ffffff;
   --app-list-surface: #ffffff;
   --app-ink: #111827;
   --app-muted: #4b6b69;
@@ -49,11 +49,43 @@ body {
   .panel {
     border: 1px solid var(--app-line);
     background: var(--app-panel);
-    box-shadow: 0 8px 22px rgba(7, 93, 91, 0.08);
+    box-shadow: 0 8px 22px rgba(7, 93, 91, 0.06);
+  }
+
+  .page-hero {
+    border: 1px solid rgba(15, 198, 194, 0.36);
+    background:
+      linear-gradient(135deg, rgba(15, 198, 194, 0.22), rgba(255, 255, 255, 0.92) 58%),
+      #f5fffe;
+    box-shadow: 0 10px 28px rgba(7, 93, 91, 0.08);
+  }
+
+  .ant-card.page-hero,
+  .ant-card.page-hero .ant-card-head,
+  .ant-card.page-hero .ant-card-body {
+    background:
+      linear-gradient(135deg, rgba(15, 198, 194, 0.22), rgba(255, 255, 255, 0.92) 58%),
+      #f5fffe;
+  }
+
+  .ant-card.page-hero {
+    border-color: rgba(15, 198, 194, 0.36);
+    box-shadow: 0 10px 28px rgba(7, 93, 91, 0.08);
   }
 
   .panel-list {
     background: var(--app-list-surface);
+    border-color: #e5e7eb;
+  }
+
+  .sub-panel {
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+  }
+
+  .sub-panel-muted {
+    border: 1px solid rgba(15, 198, 194, 0.24);
+    background: rgba(15, 198, 194, 0.05);
   }
 
   .panel-strong {
@@ -111,6 +143,51 @@ body {
   .app-input:focus {
     border-color: var(--app-accent);
     box-shadow: 0 0 0 2px rgba(15, 198, 194, 0.12);
+  }
+
+  .ant-btn.ant-btn-two-chinese-chars::first-letter,
+  .ant-btn.ant-btn-two-chinese-chars > *:not(.anticon) {
+    letter-spacing: 0 !important;
+    margin-inline-end: 0 !important;
+  }
+
+  .ant-card.panel-list {
+    background: #ffffff;
+  }
+
+  .ant-card.panel-list .ant-card-body,
+  .ant-card.panel-list .ant-card-head {
+    background: #ffffff;
+  }
+
+  .ant-table-wrapper {
+    background: #ffffff;
+  }
+
+  .ant-table-container {
+    background: #ffffff;
+  }
+
+  .ant-table-thead > tr > th {
+    white-space: nowrap;
+  }
+
+  .ant-table-tbody > tr > td {
+    vertical-align: middle;
+  }
+
+  .ant-table-tbody > tr.rule-row-selected > td,
+  .ant-table-tbody > tr.rule-row-selected:hover > td {
+    background: var(--app-accent-soft) !important;
+  }
+
+  .ant-table-cell-fix-left,
+  .ant-table-cell-fix-right {
+    background: inherit;
+  }
+
+  .ant-form-inline {
+    row-gap: 12px;
   }
 
   .metric-stack {

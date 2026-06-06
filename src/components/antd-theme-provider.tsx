@@ -23,7 +23,7 @@ export function AntdThemeProvider({ children }: { children: React.ReactNode }) {
           },
           Card: {
             borderRadiusLG: 4,
-            colorBgContainer: "#eafffe",
+            colorBgContainer: "#ffffff",
           },
           Table: {
             headerBg: "#f3f4f6",

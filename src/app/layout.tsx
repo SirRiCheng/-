@@ -16,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className="min-h-screen bg-[var(--app-bg)] text-slate-950 antialiased">
+      <body className="min-h-screen text-slate-950 antialiased">
         <AntdRegistry>
           <AntdThemeProvider>
             <AppFrame>{children}</AppFrame>

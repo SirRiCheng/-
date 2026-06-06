@@ -461,7 +461,7 @@ export function RulesManager() {
               pagination={false}
               rowClassName={(record) =>
                 selectedRecord?.templateSignature === record.templateSignature
-                  ? "cursor-pointer bg-cyan-50"
+                  ? "cursor-pointer rule-row-selected"
                   : "cursor-pointer"
               }
               onRow={(record) => ({
@@ -599,7 +599,7 @@ export function RulesManager() {
               </div>
             </div>
 
-            <div className="rounded border border-slate-200 bg-slate-50 p-4">
+            <div className="sub-panel-muted rounded p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-slate-900">试解析预览</p>
@@ -643,7 +643,7 @@ export function RulesManager() {
               </div>
 
               {preview ? (
-                <div className="mt-4 rounded border border-slate-200 bg-white">
+                <div className="panel-list mt-4 rounded border border-slate-200">
                   <Table
                     rowKey={(row) => `${row.rowNumber}-${row.skuCode}-${row.skuName}`}
                     size="small"
@@ -677,7 +677,7 @@ export function RulesManager() {
             </div>
           </div>
         ) : (
-          <div className="rounded border border-dashed border-slate-300 bg-white p-8 text-sm text-slate-500">
+          <div className="sub-panel rounded border-dashed p-8 text-sm text-slate-500">
             选择或新建一条规则后编辑。
           </div>
         )}

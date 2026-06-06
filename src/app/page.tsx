@@ -95,7 +95,7 @@ const columns: ColumnsType<ModuleItem> = [
 export default function Home() {
   return (
     <main className="mx-auto w-full max-w-7xl px-5 py-6 lg:px-8">
-      <section className="panel rounded p-5">
+      <section className="page-hero rounded p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold text-slate-950">功能列表</h1>

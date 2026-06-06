@@ -3,7 +3,7 @@ import { RulesManager } from "@/components/rules-manager";
 export default function RulesPage() {
   return (
     <main className="mx-auto w-full max-w-7xl px-5 py-6 lg:px-8">
-      <section className="panel rounded p-5">
+      <section className="page-hero rounded p-5">
         <div>
           <h1 className="text-xl font-semibold text-slate-950">解析规则管理</h1>
           <p className="mt-2 text-sm text-slate-500">
@@ -12,7 +12,7 @@ export default function RulesPage() {
         </div>
       </section>
       <div className="mt-5">
-      <RulesManager />
+        <RulesManager />
       </div>
     </main>
   );

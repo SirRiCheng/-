@@ -341,7 +341,7 @@ export function ImportWorkbench() {
           </Button>
         </Upload.Dragger>
 
-        <div className="mt-4 rounded border border-slate-200 bg-white p-4">
+        <div className="sub-panel mt-4 rounded p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[260px] flex-1">
               <span className="text-sm font-medium text-slate-700">手动选择规则</span>
@@ -368,7 +368,7 @@ export function ImportWorkbench() {
           <Alert className="mt-4" type="error" message={error} showIcon />
         ) : null}
 
-        <div className="mt-4 rounded border border-slate-200 bg-white p-4">
+        <div className="sub-panel mt-4 rounded p-4">
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm font-medium text-slate-800">{progress.message}</p>
             <p className="text-xs text-slate-500">{progress.percent}%</p>
@@ -400,7 +400,7 @@ export function ImportWorkbench() {
           <div className="mt-4 space-y-4 text-sm">
             <Descriptions bordered size="small" column={{ xs: 1, md: 2 }} items={summaryItems} />
             {result.template.rule ? (
-              <div className="rounded border border-slate-200 bg-white p-4">
+              <div className="sub-panel rounded p-4">
                 <p className="font-medium text-slate-950">{result.template.rule.name}</p>
                 <p className="mt-2 text-xs leading-6 text-slate-500">{result.template.rule.description}</p>
                 <div className="mt-3 flex flex-wrap gap-2">

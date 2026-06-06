@@ -18,7 +18,7 @@ export function OrderDetailView({ detail }: { detail: ShipmentDetailResponse }) 
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 px-5 py-6 lg:px-8">
-      <Card>
+      <Card className="page-hero">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-sm font-medium text-slate-500">运单详情</p>
@@ -36,7 +36,7 @@ export function OrderDetailView({ detail }: { detail: ShipmentDetailResponse }) 
       </Card>
 
       <section className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
-        <Card title="收货信息">
+        <Card title="收货信息" className="panel-list">
           <Descriptions column={1} size="small">
             <Descriptions.Item label="收货门店">{order.storeName || "-"}</Descriptions.Item>
             <Descriptions.Item label="收件人">{order.receiverName || "-"}</Descriptions.Item>
@@ -47,7 +47,7 @@ export function OrderDetailView({ detail }: { detail: ShipmentDetailResponse }) 
           </Descriptions>
         </Card>
 
-        <Card title="导入信息">
+        <Card title="导入信息" className="panel-list">
           <Descriptions column={1} size="small">
             <Descriptions.Item label="运单记录ID">{order.id}</Descriptions.Item>
             <Descriptions.Item label="导入任务ID">{order.importJobId || "-"}</Descriptions.Item>
@@ -74,7 +74,7 @@ export function OrderDetailView({ detail }: { detail: ShipmentDetailResponse }) 
         />
       </Card>
 
-      <Card title="当前行原始字段">
+      <Card title="当前行原始字段" className="panel-list">
         <Descriptions column={{ xs: 1, sm: 2 }} size="small">
           <Descriptions.Item label="SKU物品编码">{order.skuCode}</Descriptions.Item>
           <Descriptions.Item label="SKU物品名称">{order.skuName}</Descriptions.Item>
