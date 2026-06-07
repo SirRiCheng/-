@@ -224,6 +224,11 @@ body {
     row-gap: 12px;
   }
 
+  .import-upload-zone {
+    height: 280px;
+    min-height: 280px;
+  }
+
   .metric-stack {
     border-left: 1px solid rgba(148, 163, 184, 0.2);
     padding-left: 1rem;

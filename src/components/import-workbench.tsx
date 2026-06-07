@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Alert, Button, Descriptions, Progress, Select, Space, Table, Tag, Upload } from "antd";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Button, Descriptions, Progress, Select, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { rebuildParsedPayload } from "@/lib/excel/standardize";
 import { sanitizeRuleRecords } from "@/lib/import-session";
@@ -45,6 +45,7 @@ function getMissingRequiredFields(mapping: FieldMapping) {
 
 export function ImportWorkbench() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [result, setResult] = useState<ParsedImportPayload | null>(null);
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -308,9 +309,9 @@ export function ImportWorkbench() {
   ];
 
   return (
-    <div className="grid gap-5">
-      <section className="panel rounded p-5">
-        <div className="mb-5 flex items-start justify-between gap-4">
+    <div className="grid min-w-0 max-w-full gap-5">
+      <section className="panel min-w-0 max-w-full rounded p-5">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-slate-950">上传与模板识别</h2>
             <p className="mt-2 text-sm text-slate-500">
@@ -322,24 +323,56 @@ export function ImportWorkbench() {
           </span>
         </div>
 
-        <Upload.Dragger
-          accept=".xlsx,.xls,.doc,.docx,.pdf,.txt"
-          disabled={isLoading}
-          maxCount={1}
-          showUploadList={false}
-          beforeUpload={(file) => {
-            void parseSelectedFile(file);
-            return false;
+        <div
+          className="import-upload-zone flex cursor-pointer items-center justify-center rounded border border-dashed border-[var(--app-accent)] bg-white px-5 text-center transition hover:border-[var(--app-accent-hover)] hover:bg-[var(--app-accent-wash)]"
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (!isLoading) {
+              fileInputRef.current?.click();
+            }
+          }}
+          onKeyDown={(event) => {
+            if (!isLoading && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const file = event.dataTransfer.files?.[0];
+            if (file && !isLoading) {
+              void parseSelectedFile(file);
+            }
           }}
         >
-          <p className="text-base font-semibold text-slate-900">拖拽或点击上传文件</p>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
-            支持 `.xlsx` / `.xls` / `.docx` / `.pdf` / `.txt`。Excel 走表格解析，其他文件调用大模型抽取结构化下单数据。
-          </p>
-          <Button className="mt-5" type="primary" loading={isLoading}>
-            {isLoading ? "解析中" : "选择文件"}
-          </Button>
-        </Upload.Dragger>
+          <input
+            ref={fileInputRef}
+            className="hidden"
+            type="file"
+            accept=".xlsx,.xls,.doc,.docx,.pdf,.txt"
+            disabled={isLoading}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                void parseSelectedFile(file);
+              }
+              event.target.value = "";
+            }}
+          />
+          <div>
+            <p className="text-base font-semibold text-slate-900">拖拽或点击上传文件</p>
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+              支持 `.xlsx` / `.xls` / `.docx` / `.pdf` / `.txt`。Excel 走表格解析，其他文件调用大模型抽取结构化下单数据。
+            </p>
+            <span className="mt-5 inline-flex h-10 items-center rounded bg-[var(--app-accent)] px-5 text-sm font-medium text-white transition hover:bg-[var(--app-accent-hover)]">
+              {isLoading ? "解析中" : "选择文件"}
+            </span>
+          </div>
+        </div>
 
         <div className="sub-panel mt-4 rounded p-4">
           <div className="flex flex-wrap items-end gap-3">
@@ -382,7 +415,7 @@ export function ImportWorkbench() {
         </div>
       </section>
 
-      <section className="panel rounded p-5">
+      <section className="panel min-w-0 max-w-full rounded p-5">
         <h2 className="text-base font-semibold text-slate-950">规则与解析摘要</h2>
         {!result ? (
           <div className="mt-4 text-sm text-slate-600">
