@@ -33,6 +33,18 @@ const operationOptions: ParseRule["operations"] = [
   "pdf_order_split",
 ];
 
+const operationLabels: Record<ParseRule["operations"][number], string> = {
+  skip_headers: "跳过表头",
+  tail_info_extract: "提取尾部信息",
+  cross_row_group: "跨行聚合",
+  matrix_transpose: "矩阵转置",
+  multi_sheet_merge: "多工作表合并",
+  card_split: "卡片拆分",
+  plain_text_extract: "纯文本抽取",
+  compound_cell_split: "复合单元格拆分",
+  pdf_order_split: "PDF 订单拆分",
+};
+
 function createEmptyRuleRecord(): TemplateMappingRecord {
   const now = new Date().toISOString();
   const signature = `manual-rule-${Date.now()}`;
@@ -575,7 +587,7 @@ export function RulesManager() {
                         });
                       }}
                     >
-                      {operation}
+                      {operationLabels[operation]}
                     </Button>
                   );
                 })}

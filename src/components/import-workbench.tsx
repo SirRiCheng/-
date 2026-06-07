@@ -29,6 +29,31 @@ const fieldLabels: Record<(typeof shipmentFields)[number], string> = {
   remark: "备注",
 };
 
+const matchedByLabels: Record<ParsedImportPayload["template"]["matchedBy"], string> = {
+  alias: "字段别名匹配",
+  "saved-template": "已保存模板规则",
+  manual: "手动选择规则",
+  "ai-generated": "AI 推荐规则",
+};
+
+const generatedByLabels: Record<string, string> = {
+  llm: "大模型生成",
+  "local-heuristic": "本地规则生成",
+  "selected-rule": "手动选择规则",
+};
+
+const operationLabels: Record<ParseRule["operations"][number], string> = {
+  skip_headers: "跳过表头",
+  tail_info_extract: "提取尾部信息",
+  cross_row_group: "跨行聚合",
+  matrix_transpose: "矩阵转置",
+  multi_sheet_merge: "多工作表合并",
+  card_split: "卡片拆分",
+  plain_text_extract: "纯文本抽取",
+  compound_cell_split: "复合单元格拆分",
+  pdf_order_split: "PDF 订单拆分",
+};
+
 function getMissingRequiredFields(mapping: FieldMapping) {
   const hasStoreGroup = Boolean(mapping.storeName);
   const hasReceiverGroup = Boolean(mapping.receiverName && mapping.receiverPhone && mapping.receiverAddress);
@@ -279,7 +304,7 @@ export function ImportWorkbench() {
   const summaryItems = result
     ? [
         { key: "fileName", label: "文件", children: result.fileName },
-        { key: "sheetName", label: "Sheet", children: result.sheetName },
+        { key: "sheetName", label: "工作表", children: result.sheetName },
         { key: "signature", label: "模板签名", children: result.template.signature || "无" },
         { key: "parsedRows", label: "解析行数", children: result.totals.parsedRows },
         { key: "errorRows", label: "错误行数", children: result.totals.errorRows },
@@ -290,8 +315,8 @@ export function ImportWorkbench() {
           children: `${result.performance.totalChunks} 块 / 每块 ${result.performance.chunkSize} 行`,
         },
         { key: "pageSize", label: "预览建议", children: `每页 ${result.performance.recommendedPageSize} 行` },
-        { key: "matchedBy", label: "映射来源", children: result.template.matchedBy },
-        ...(generatedBy ? [{ key: "generatedBy", label: "规则生成", children: generatedBy }] : []),
+        { key: "matchedBy", label: "映射来源", children: matchedByLabels[result.template.matchedBy] },
+        ...(generatedBy ? [{ key: "generatedBy", label: "规则生成", children: generatedByLabels[generatedBy] || "系统生成" }] : []),
       ]
     : [];
   const mappingColumns: ColumnsType<{ field: (typeof shipmentFields)[number]; source: string }> = [
@@ -438,7 +463,7 @@ export function ImportWorkbench() {
                 <p className="mt-2 text-xs leading-6 text-slate-500">{result.template.rule.description}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {result.template.rule.operations.map((operation) => (
-                    <Tag key={operation}>{operation}</Tag>
+                    <Tag key={operation}>{operationLabels[operation] || operation}</Tag>
                   ))}
                 </div>
                 <div className="mt-4 grid gap-2">
