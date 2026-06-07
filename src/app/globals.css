@@ -54,7 +54,7 @@ body {
   }
 
   .app-workspace {
-    background: #f4f8f9;
+    background: transparent;
   }
 
   .top-menu {
@@ -67,28 +67,7 @@ body {
 
   .app-content {
     min-height: calc(100vh - 4rem);
-    background:
-      radial-gradient(circle at 36% 32%, rgba(69, 195, 192, 0.08), transparent 28%),
-      linear-gradient(135deg, rgba(9, 45, 69, 0.035) 25%, transparent 25%) 0 0 / 220px 160px,
-      linear-gradient(135deg, transparent 75%, rgba(69, 195, 192, 0.04) 75%) 0 0 / 220px 160px,
-      #f7fbfb;
-  }
-
-  .app-content::before {
-    content: "ZTO 中通冷链";
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    color: rgba(9, 45, 69, 0.035);
-    font-size: 1rem;
-    font-weight: 700;
-    line-height: 8rem;
-    letter-spacing: 0;
-    transform: rotate(-15deg);
-    transform-origin: 50% 45%;
-    text-align: center;
-    white-space: pre;
+    background: transparent;
   }
 
   .app-content > main {
