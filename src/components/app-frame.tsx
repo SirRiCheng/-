@@ -71,8 +71,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <div className="app-workspace min-h-[calc(100vh-4rem)]">
-        <div className="app-content relative pb-12">{children}</div>
+      <div className="app-workspace min-h-[calc(100vh-4rem)] min-w-0 max-w-full">
+        <div className="app-content relative min-w-0 max-w-full overflow-x-hidden pb-12">{children}</div>
       </div>
     </div>
   );

@@ -421,8 +421,8 @@ export function PreviewGrid() {
   }
 
   return (
-    <div className="grid gap-5">
-      <section className="panel rounded p-5">
+    <div className="grid min-w-0 max-w-full gap-5">
+      <section className="panel min-w-0 max-w-full rounded p-5">
         <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold text-slate-950">预览编辑表格</h2>
@@ -482,7 +482,7 @@ export function PreviewGrid() {
           ) : null}
         </div>
 
-        <div className="panel-list overflow-hidden rounded">
+        <div className="panel-list min-w-0 max-w-full overflow-hidden rounded">
           <Table
             rowKey="rowNumber"
             columns={tableColumns}
