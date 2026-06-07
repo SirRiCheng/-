@@ -423,21 +423,21 @@ export function PreviewGrid() {
   return (
     <div className="grid gap-5">
       <section className="panel rounded p-5">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-          <div>
+        <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold text-slate-950">预览编辑表格</h2>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 break-words text-sm text-slate-500">
               {payload
                 ? `当前文件：${payload.fileName} / ${payload.sheetName}。编辑、导出和提交都基于数据库会话 #${sessionId}。`
                 : "当前未检测到数据库解析会话，请先在导入工作台上传并保存入库。"}
             </p>
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 break-words text-xs text-slate-500">
               {payload?.performance.largeDataset
                 ? `当前为大数据量预览，仅渲染当前页 ${pageSize} 行，降低页面卡顿。`
                 : `当前总行数 ${rows.length}，支持门店模式或收件人模式二选一。`}
             </p>
           </div>
-          <Space wrap>
+          <Space className="w-full xl:w-auto xl:justify-end" wrap>
             <Tag color={issues.length ? "error" : "success"}>错误数 {issues.length}</Tag>
             <Button
               onClick={() => exportRowsToCsv(rows)}
@@ -470,8 +470,8 @@ export function PreviewGrid() {
         ) : null}
 
         <div className="sub-panel mb-5 rounded p-4">
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-sm font-medium text-slate-800">{submitProgress.message}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 break-words text-sm font-medium text-slate-800">{submitProgress.message}</p>
             <p className="text-xs text-slate-500">{submitProgress.percent}%</p>
           </div>
           <Progress className="mt-2" percent={submitProgress.percent} showInfo={false} />
