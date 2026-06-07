@@ -5,7 +5,6 @@ import Image from "next/image";
 import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import {
-  ChevronDown,
   Database,
   FileSpreadsheet,
   Home,
@@ -31,8 +30,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell min-h-screen">
       <header className="app-topbar sticky top-0 z-30">
-        <div className="flex h-16 items-center justify-between gap-6 px-5">
-          <div className="flex min-w-0 items-center gap-8">
+        <div className="flex min-h-16 flex-col gap-3 px-5 py-3 lg:h-16 lg:flex-row lg:items-center lg:justify-between lg:py-0">
+          <div className="flex min-w-0 shrink-0 items-center gap-8">
             <Link href="/" className="flex shrink-0 items-center gap-3">
               <Image
                 src="/zto-cold-chain.png"
@@ -47,48 +46,33 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
               <p className="truncate text-xs text-white/72">AI 解析规则导入工具</p>
             </div>
           </div>
+          <nav className="top-menu -mx-1 flex min-w-0 gap-1 overflow-x-auto pb-1 lg:mx-0 lg:justify-end lg:pb-0">
+            {navItems.map(({ href, label, icon: Icon }) => {
+              const active =
+                href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={[
+                    "inline-flex h-10 shrink-0 items-center gap-2 rounded px-3 text-sm font-medium transition",
+                    active
+                      ? "bg-white text-[var(--app-deep)] shadow-sm"
+                      : "text-white/78 hover:bg-white/12 hover:text-white",
+                  ].join(" ")}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
         </div>
       </header>
 
-      <div className="app-workspace flex min-h-[calc(100vh-4rem)]">
-        <aside className="app-sidebar hidden w-[244px] shrink-0 flex-col lg:flex">
-          <div className="flex h-12 items-center justify-between border-b border-white/8 px-5 text-sm font-medium text-white/84">
-            <span>功能菜单</span>
-            <ChevronDown className="h-4 w-4" />
-          </div>
-          <div className="px-3 py-4">
-            <nav className="space-y-1">
-              {navItems.map(({ href, label, icon: Icon }) => {
-                const active =
-                  href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
-
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={[
-                      "flex items-center gap-3 rounded px-3 py-3 text-sm font-medium transition",
-                      active
-                        ? "bg-[rgba(76,194,192,0.26)] text-white"
-                        : "text-white/66 hover:bg-white/8 hover:text-white",
-                    ].join(" ")}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{label}</span>
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-        </aside>
-
-        <div className="min-w-0 flex-1">
-          <div className="app-subbar hidden h-11 items-center border-b border-slate-200 bg-white px-5 text-sm text-slate-500 lg:flex">
-            <span className="mr-3 text-xl leading-none text-slate-500">«</span>
-            <span>万能导入 V2 / AI 解析规则导入工具</span>
-          </div>
-          <div className="app-content relative pb-12">{children}</div>
-        </div>
+      <div className="app-workspace min-h-[calc(100vh-4rem)]">
+        <div className="app-content relative pb-12">{children}</div>
       </div>
     </div>
   );

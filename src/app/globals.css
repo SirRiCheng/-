@@ -15,8 +15,6 @@
   --app-accent-soft: rgba(69, 195, 192, 0.16);
   --app-accent-wash: rgba(69, 195, 192, 0.08);
   --app-deep: #0b5f73;
-  --app-sidebar: #092d45;
-  --app-sidebar-deep: #062237;
   --app-top-start: #45b9b7;
   --app-top-end: #176888;
 }
@@ -59,15 +57,16 @@ body {
     background: #f4f8f9;
   }
 
-  .app-sidebar {
-    background:
-      linear-gradient(180deg, rgba(9, 45, 69, 0.98), rgba(6, 34, 55, 1)),
-      var(--app-sidebar);
-    box-shadow: 4px 0 18px rgba(6, 34, 55, 0.16);
+  .top-menu {
+    scrollbar-width: none;
+  }
+
+  .top-menu::-webkit-scrollbar {
+    display: none;
   }
 
   .app-content {
-    min-height: calc(100vh - 6.75rem);
+    min-height: calc(100vh - 4rem);
     background:
       radial-gradient(circle at 36% 32%, rgba(69, 195, 192, 0.08), transparent 28%),
       linear-gradient(135deg, rgba(9, 45, 69, 0.035) 25%, transparent 25%) 0 0 / 220px 160px,
